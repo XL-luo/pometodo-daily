@@ -1,10 +1,12 @@
-# PomeTodo
+# PomeTodo Daily
+
+这是由 `XL-luo` 基于 [ShiliuX-Team/pometodo](https://github.com/ShiliuX-Team/pometodo) 制作的非官方修改版。它保留原项目的 GPL-3.0-only 许可和版权历史，不代表 ShiliuX-Team 官方发布或担保。
 
 Windows 上的轻量待办与日报工具：记录任务、日期、备注和截图，并从待办状态与截止日期生成每日工作总结和明日计划。
 
 公开源码方便你按自己的习惯修改界面、添加功能，做一款适合自己的待办工具。
 
-[安装包发布页](https://github.com/ShiliuX-Team/pometodo/releases) · [ShiliuX 官网](https://www.shiliux.com/) · [开发指南](docs/DEVELOPMENT.md) · [项目状态](docs/STATUS.md)
+[本修改版发布页](https://github.com/XL-luo/pometodo-daily/releases) · [上游源码](https://github.com/ShiliuX-Team/pometodo) · [开发指南](docs/DEVELOPMENT.md) · [分发与源码说明](docs/DISTRIBUTION.md)
 
 ## 能做什么
 
@@ -17,7 +19,7 @@ Windows 上的轻量待办与日报工具：记录任务、日期、备注和截
 
 ## 下载或修改
 
-只想使用软件，请在发布页查找 Windows 安装包；是否已提供及当前版本见[项目状态](docs/STATUS.md)。GitHub 的“Download ZIP”下载的是源码，解压后不能直接当作软件运行。
+只想使用软件，请在本修改版发布页查找 Windows 安装包或便携程序，并按发布页的 SHA256 校验文件。GitHub 的“Download ZIP”下载的是源码，解压后不能直接当作软件运行。曾收到 2026-10-01 单个 EXE 的用户请先阅读[分发与源码说明](docs/DISTRIBUTION.md)。
 
 想修改源码，先准备 Node.js 22、pnpm 11、Rust 和 Windows 构建工具，具体见[开发环境](docs/DEVELOPMENT.md#开发环境)，然后在项目根目录运行：
 
@@ -32,10 +34,10 @@ corepack pnpm tauri dev
 
 任务、日报和附件保存在本机。使用 AI 时，所选待办和补充文字会发送给你选择的服务商，费用由自己的服务商账户承担；截图整理仍沿用待办录入流程。此日报改版不连接上游自动更新。详情见[数据与网络](docs/DEVELOPMENT.md#数据与网络)。
 
-当前公开源码不含官方账户实现、网关后台、服务密钥或真实用户资料。早期公开版本及其许可保留在历史记录中。手机版与跨设备同步尚未交付。
+当前公开源码不含官方账户实现、网关后台、服务密钥或真实用户资料。公开前已检查全部 Git 历史、分支、标签和远程发布内容；检查不能替代接收者对下载内容的独立核对。早期公开版本及其许可保留在历史记录中。手机版与跨设备同步尚未交付。
 
 ## 许可与参与
 
 采用 [GPL-3.0-only](LICENSE)，允许使用、修改和商业分发；分发受 GPL 覆盖的程序时，须按许可证提供对应源码并保留必要声明。第三方许可和品牌范围见[版权说明](docs/NOTICE.md)。
 
-你可以只在自己电脑上修改使用，也可以按[参与指南](.github/CONTRIBUTING.md)提交改进。安全问题请按[安全反馈说明](.github/SECURITY.md)私下报告。
+本修改版由 `XL-luo` 发布，修改内容仍按 GPL-3.0-only 提供；没有向上游额外授予 MIT 许可。上游贡献规则只在向上游提交改进时适用。安全问题请勿附带真实待办、截图或密钥公开提交。

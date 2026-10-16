@@ -51,7 +51,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib --tests --locked
 corepack pnpm run build:installer
 ```
 
-构建脚本检查版本并生成安装包与校验记录，默认保存到 `artifacts/byok/`，编译缓存使用独立目录。脚本从本机缓存及 `docs/licenses/` 汇集原始版权许可，并把 MPL 组件源码归档随安装包提供；需要当前 Rust 工具链的 `rust-docs` 组件。本机依赖齐全后可加 `--offline`。构建不会发布或部署。
+构建脚本要求已跟踪文件处于干净提交，检查版本并生成安装包、便携程序、许可目录与校验记录，默认保存到 `artifacts/byok/`，编译缓存使用独立目录。记录包含准确源码提交和固定提交链接。脚本从本机缓存及 `docs/licenses/` 汇集原始版权许可，并把 MPL 组件源码归档随候选包提供；需要当前 Rust 工具链的 `rust-docs` 组件。本机依赖齐全后可加 `--offline`。构建不会发布或部署。
 
 本日报改版使用独立应用标识 `com.xl.pometodo.daily` 和独立数据目录，不会覆盖原版 PomeTodo。迁移数据时先从原版导出备份，再在日报版导入；旧版任务备份可直接读取。日报版关闭上游自动更新，请从本仓库构建新版本。
 

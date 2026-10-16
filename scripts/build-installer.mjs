@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,16 @@ const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), 
 const cargoVersion = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8").match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 const lockVersion = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8").match(/name = "pometodo-desktop"\r?\nversion = "([^"]+)"/)?.[1];
 if (![config.version, cargoVersion, lockVersion].every(version => version === pkg.version)) throw new Error("版本号不一致，停止打包");
+function capture(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { cwd: root, encoding: "utf8", windowsHide: true });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${command} 执行失败，退出码 ${result.status}`);
+  return result.stdout.trim();
+}
+if (capture("git", ["status", "--porcelain", "--untracked-files=no"])) throw new Error("存在未提交的已跟踪文件，不能生成可追溯发布候选");
+const sourceRevision = capture("git", ["rev-parse", "HEAD"]);
+const sourceRepository = "https://github.com/XL-luo/pometodo-daily";
+const sourceUrl = `${sourceRepository}/tree/${sourceRevision}`;
 
 const env = { ...process.env };
 delete env.POMETODO_SERVICE_EXTENSION;
@@ -53,10 +63,13 @@ function run(command, commandArgs) {
 }
 function sha(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
 try {
+  rmSync(join(root, "artifacts/licenses"), { recursive: true, force: true });
   run(process.execPath, [join(root, "scripts/collect-licenses.mjs")]);
   const licenseDir = join(root, "artifacts/licenses");
   copyFileSync(join(root, "LICENSE"), join(licenseDir, "POMETODO-SOURCE-GPL-3.0.txt"));
-  writeFileSync(join(licenseDir, "POMETODO-SOURCE.txt"), `PomeTodo ${pkg.version}\nPublic Windows source: https://github.com/ShiliuX-Team/pometodo\nBuild: ${mode}\n${mode === "official" ? "The official account extension is provided separately and is not included in the public source. The included GPL text describes the public source license, not an additional license grant for that extension." : "This build is made from the public GPL-3.0-only source. See the release for the corresponding source revision and build instructions."}\nThird-party notices and MPL source archives in this directory retain their respective licenses.\n`);
+  copyFileSync(join(root, "docs/NOTICE.md"), join(licenseDir, "POMETODO-NOTICE.md"));
+  copyFileSync(join(root, "docs/DISTRIBUTION.md"), join(licenseDir, "POMETODO-DISTRIBUTION.md"));
+  writeFileSync(join(licenseDir, "POMETODO-SOURCE.txt"), `PomeTodo Daily ${pkg.version}\nUnofficial modification published by XL-luo.\nUpstream: https://github.com/ShiliuX-Team/pometodo\nSource revision: ${sourceRevision}\nCorresponding source: ${sourceUrl}\nBuild: ${mode}\n${mode === "official" ? "The official account extension is provided separately and is not included in the public source. The included GPL text describes the public source license, not an additional license grant for that extension." : "This build is made from the GPL-3.0-only source at the exact revision above. Build instructions are in docs/DEVELOPMENT.md."}\nThird-party notices and MPL source archives in this directory retain their respective licenses.\n`);
   const cliArgs = [join(root, "node_modules/@tauri-apps/cli/tauri.js"), "build", "--ci", "--bundles", "nsis", "--config", JSON.stringify({ bundle: { active: true, resources: { "../artifacts/licenses/": "licenses/" } } })];
   if (mode === "official") cliArgs.push("--features", "official-services");
   cliArgs.push("--", "--locked", "--no-default-features");
@@ -71,6 +84,7 @@ try {
   const executable = join(destination, "pometodo-desktop.exe");
   copyFileSync(join(bundle, installers[0]), installer);
   copyFileSync(join(env.CARGO_TARGET_DIR, "release/pometodo-desktop.exe"), executable);
+  cpSync(licenseDir, join(destination, "licenses"), { recursive: true });
   const record = {
     product: "pometodo-daily", version: pkg.version, mode,
     channel: "local-daily",
@@ -78,9 +92,11 @@ try {
     installer: installerName, sha256: sha(installer), byteLength: readFileSync(installer).length,
     executableSha256: sha(executable),
     cargoFeatures: mode === "official" ? ["official-services"] : [],
+    sourceRevision, sourceUrl,
     offline, published: false, thirdPartyNoticesSha256: sha(join(licenseDir, "THIRD-PARTY-NOTICES.txt")),
   };
   writeFileSync(join(destination, "build.json"), JSON.stringify(record, null, 2) + "\n");
+  writeFileSync(join(destination, "SHA256SUMS.txt"), `${record.sha256}  ${installerName}\n${record.executableSha256}  pometodo-desktop.exe\n`);
   console.log(`候选已生成：${destination}`);
 } finally {
   closeSync(lock);
