@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "PomeTodo",
+  "productName": "PomeTodo Daily",
   "version": "0.1.4",
-  "identifier": "com.pome.todo",
+  "identifier": "com.xl.pometodo.daily",
   "build": {
-    "beforeDevCommand": "corepack pnpm dev",
-    "beforeBuildCommand": "corepack pnpm build",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
     "devUrl": "http://127.0.0.1:1427",
     "frontendDist": "../dist"
   },
@@ -13,7 +13,7 @@
     "windows": [{
       "label": "main",
       "visible": false,
-      "title": "PomeTodo 待办",
+      "title": "PomeTodo 待办与日报",
       "width": 460,
       "height": 800,
       "minWidth": 400,

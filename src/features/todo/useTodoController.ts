@@ -73,6 +73,7 @@ export interface TodoControllerCore {
   createTask(draft: TodoDraft): Promise<TodoWriteResult>;
   updateTask(id: string, draft: TodoDraft): Promise<TodoWriteResult>;
   setTaskStatus(id: string, status: TodoStatus): Promise<TodoWriteResult>;
+  cancelTask(id: string): Promise<TodoWriteResult>;
   setTaskUrgent(id: string, urgent: boolean): Promise<TodoWriteResult>;
   deleteTask(id: string): Promise<TodoWriteResult>;
   recognizeClipboard(): Promise<TodoRecognitionOutcome | null>;
@@ -231,6 +232,22 @@ export function createTodoControllerCore(services: TodoServices): TodoController
         return { ok: false, message: readableTodoError(error, todoTexts.saveFailed) };
       }
     },
+    async cancelTask(id) {
+      if (state.busyTaskIds.includes(id)) return { ok: false, message: todoTexts.actionBusy };
+      patch({ busyTaskIds: [...state.busyTaskIds, id] });
+      try {
+        const saved = await services.cancelTask(id);
+        recordWrite(id);
+        patch({
+          busyTaskIds: state.busyTaskIds.filter((busyId) => busyId !== id),
+          tasks: upsertTask(state.tasks, saved),
+        });
+        return { ok: true };
+      } catch (error) {
+        patch({ busyTaskIds: state.busyTaskIds.filter((busyId) => busyId !== id) });
+        return { ok: false, message: readableTodoError(error, todoTexts.saveFailed) };
+      }
+    },
     async deleteTask(id) {
       if (state.deletingTaskId || state.busyTaskIds.includes(id)) return { ok: false, message: todoTexts.actionBusy };
       patch({ deletingTaskId: id, busyTaskIds: [...state.busyTaskIds, id] });
@@ -318,7 +335,15 @@ export function useTodoController(services: TodoServices) {
 
   useEffect(() => {
     const timer = window.setInterval(() => core.recompute(), 60000);
-    return () => window.clearInterval(timer);
+    const recompute = () => core.recompute();
+    const onVisibility = () => { if (document.visibilityState === "visible") recompute(); };
+    window.addEventListener("focus", recompute);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", recompute);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [core]);
 
   return { core, state };

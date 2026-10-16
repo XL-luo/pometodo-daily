@@ -171,6 +171,7 @@ mod tests {
             title: "安全换目录".into(),
             note: String::new(),
             received_at: "2026-09-06T00:00:00Z".into(),
+            planned_start_at: None,
             due_at: None,
             attachment_paths: vec![],
         }

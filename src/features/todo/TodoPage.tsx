@@ -3,6 +3,8 @@ import type { TodoPageProps, TodoRecognitionDraft, TodoTask } from "../../contra
 import SearchInput from "./components/SearchInput";
 import StatusBar, { type SystemStatusProps } from "../../components/StatusBar";
 import CompletedList from "./components/CompletedList";
+import SourceList from "./components/SourceList";
+import { loadTodoViewPreferences, saveTodoViewPreferences } from "./todoViewPreferences";
 import TodoCard from "./components/TodoCard";
 import TodoCalendar, { shiftCalendarMonth } from "./components/TodoCalendar";
 import TodoDialog, { type TodoRecognitionView } from "./components/TodoDialog";
@@ -11,9 +13,11 @@ import type { TodoDraftFields, TodoFilter, TodoWorkflowAction } from "./todoMode
 import {
   TODO_BATCH_SIZE,
   applyTodoRecognitionDraft,
+  createTodoDraftFields,
   dueWordsFor,
   getTodoDueInfo,
   getTodoDisplayGroups,
+  getTodoSourceGroups,
   getCompletedTodoGroups,
   getTodoListSlice,
   parseTodoDialogDateValue,
@@ -21,6 +25,8 @@ import {
   toTodoDateInputValue,
   toTodoDateOffsetInputValue,
   toTodoIsoDate,
+  updateTodoReceivedDate,
+  validateTodoPlanDates,
 } from "./todoModel";
 import { todoTexts } from "./todoTexts";
 import { wordPackFor, type TodoWordPack } from "./wordPacks";
@@ -41,14 +47,7 @@ interface DraftNoticeState {
 }
 
 function createEmptyDraft(): TodoDraftFields {
-  return {
-    customerName: "",
-    title: "",
-    note: "",
-    receivedAt: toTodoDateOffsetInputValue(0),
-    dueAt: "",
-    attachmentPaths: [],
-  };
+  return createTodoDraftFields();
 }
 
 export default function TodoPage({ services, onOpenAttachment, onImportAttachment, systemMessage, onDismissSystemMessage, pendingRequest = 0, quickDueOptions, focusTaskRequest, active = true, refreshRequest = 0, customerSuggestions = [], customerLabel = "来源", smartArrangeAvailable = false, smartArrangeLabel, smartArrangeTone, onEnableSmartArrange, loginPanel, onEditorOpenChange, onBusyChange }: HostedTodoPageProps): ReactElement {
@@ -65,6 +64,8 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 快捷粘贴可以在同一个事件里新建并识别，立即更新模式以避免读取旧编辑状态。
+  const editingDraftRef = useRef(false);
   const [draft, setDraft] = useState<TodoDraftFields>(() => createEmptyDraft());
   const attachmentPathsRef = useRef<string[]>([]);
   attachmentPathsRef.current = draft.attachmentPaths;
@@ -82,6 +83,8 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
   const [archive, setArchive] = useState(false);
+  const [viewPreferences, setViewPreferences] = useState(loadTodoViewPreferences);
+  useEffect(() => { saveTodoViewPreferences(viewPreferences); }, [viewPreferences]);
   const [importingAttachments, setImportingAttachments] = useState(false);
   const importingRef = useRef(false);
   const accountActionsBusy = state.saving || state.recognizing || state.addingAttachment || importingAttachments || Boolean(deferTaskId || deleteTaskId);
@@ -99,6 +102,24 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
   const searching = Boolean(state.search.trim());
   const displayGroups = useMemo(() => getTodoDisplayGroups(state.visibleTasks, state.status, searching, new Date(renderDay), dueWords), [state.visibleTasks, state.status, searching, renderDay, dueWords]);
   const completedGroups = useMemo(() => getCompletedTodoGroups(state.visibleTasks, new Date(renderDay)), [state.visibleTasks, renderDay]);
+  const sourceGroups = useMemo(() => {
+    const tasks = !searching && state.status === "completed"
+      ? (archive ? completedGroups.archived : completedGroups.recent).flatMap(group => group.tasks)
+      : state.visibleTasks;
+    return getTodoSourceGroups(tasks, `未填写${wordPack.customerLabel}`);
+  }, [state.visibleTasks, state.status, searching, archive, completedGroups, wordPack.customerLabel]);
+  const toggleSource = useCallback((key: string) => {
+    setViewPreferences(current => ({ ...current, collapsedSources: current.collapsedSources.includes(key)
+      ? current.collapsedSources.filter(item => item !== key) : [...current.collapsedSources, key] }));
+  }, []);
+  useEffect(() => {
+    if (!highlightedTaskId || viewPreferences.mode !== "source") return;
+    const task = state.tasks.find(item => item.id === highlightedTaskId);
+    if (!task) return;
+    const key = task.customerName.trim();
+    setViewPreferences(current => current.collapsedSources.includes(key)
+      ? { ...current, collapsedSources: current.collapsedSources.filter(item => item !== key) } : current);
+  }, [highlightedTaskId, state.tasks, viewPreferences.mode]);
   const dueDateShortcuts = useMemo(
     () => parseTodoQuickDueOptions(quickDueOptions ?? ""),
     [quickDueOptions],
@@ -145,9 +166,16 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
   const applyRecognition = useCallback((recognized: TodoRecognitionDraft) => {
     setDraft((current) => {
       const next = applyTodoRecognitionDraft(current, recognized);
+      if (!editingDraftRef.current && !recognized.plannedStartAt) {
+        // 未识别出开始日期时，保留用户已修改的值；默认值跟随接收日期。
+        const receivedAt = toTodoDateInputValue(next.receivedAt) || current.receivedAt;
+        next.receivedAt = receivedAt;
+        next.plannedStartAt = current.plannedStartAt === current.receivedAt ? receivedAt : current.plannedStartAt;
+      }
       return {
         ...next,
         receivedAt: toTodoDateInputValue(next.receivedAt),
+        plannedStartAt: toTodoDateInputValue(next.plannedStartAt),
         dueAt: toTodoDateInputValue(next.dueAt),
       };
     });
@@ -195,6 +223,7 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       if (core.getState().saving || core.getState().recognizing || core.getState().addingAttachment || importingRef.current) return;
       recognitionSeqRef.current += 1;
       setNotice(null);
+      editingDraftRef.current = false;
       setEditingId(null);
       setDraft(createEmptyDraft());
       setTitleError(false);
@@ -218,12 +247,14 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
   const openEditDialog = useCallback((task: TodoTask) => {
     if (core.getState().saving || core.getState().recognizing || core.getState().addingAttachment || importingRef.current) return;
     recognitionSeqRef.current += 1;
+    editingDraftRef.current = true;
     setEditingId(task.id);
     setDraft({
       customerName: task.customerName,
       title: task.title,
       note: task.note,
       receivedAt: toTodoDateInputValue(task.receivedAt),
+      plannedStartAt: toTodoDateInputValue(task.plannedStartAt),
       dueAt: toTodoDateInputValue(task.dueAt),
       attachmentPaths: task.attachmentPaths,
     });
@@ -242,7 +273,7 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
   }, [state.visibleTasks.length]);
 
   useEffect(() => {
-    if (!visiblePlan.hasMore) return;
+    if (viewPreferences.mode === "source" || !visiblePlan.hasMore) return;
 
     const root = listRef.current;
     const sentinel = sentinelRef.current;
@@ -257,7 +288,7 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [loadMoreTasks, visiblePlan.hasMore]);
+  }, [loadMoreTasks, visiblePlan.hasMore, viewPreferences.mode]);
 
   const openAttachment = useCallback(
     async (path: string) => {
@@ -377,11 +408,15 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       return;
     }
 
+    const dateError = validateTodoPlanDates(draft.plannedStartAt, draft.dueAt);
+    if (dateError) { setNotice({ tone: "error", text: dateError }); return; }
+
     const payload = {
       customerName,
       title,
       note: draft.note.trim(),
       receivedAt: toTodoIsoDate(draft.receivedAt) ?? new Date().toISOString(),
+      plannedStartAt: toTodoIsoDate(draft.plannedStartAt ?? ""),
       dueAt: toTodoIsoDate(draft.dueAt),
       attachmentPaths: draft.attachmentPaths,
     };
@@ -409,12 +444,15 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       0,
       0,
     );
+    const dateError = validateTodoPlanDates(task.plannedStartAt, nextDueAt.toISOString());
+    if (dateError) { setNotice({ tone: "error", text: dateError }); return; }
 
     const result = await core.updateTask(task.id, {
       customerName: task.customerName,
       title: task.title,
       note: task.note,
       receivedAt: task.receivedAt,
+      plannedStartAt: task.plannedStartAt,
       dueAt: nextDueAt.toISOString(),
       attachmentPaths: task.attachmentPaths,
     });
@@ -460,6 +498,16 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       }
     },
     [core, openDeferDatePicker],
+  );
+
+  const handleCancelTask = useCallback(
+    async (task: TodoTask) => {
+      const result = await core.cancelTask(task.id);
+      if (!result.ok) {
+        setNotice({ tone: "error", text: result.message });
+      }
+    },
+    [core],
   );
 
   const confirmDelete = async () => {
@@ -603,6 +651,7 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
     busy={state.busyTaskIds.includes(task.id) || state.deletingTaskId === task.id}
     onOpenEdit={openEditDialog}
     onSetUrgent={(target, urgent) => void handleSetUrgent(target, urgent)}
+    onCancelTask={(target) => void handleCancelTask(target)}
     onOpenDeferPicker={openDeferDatePicker}
     onWorkflowAction={(target, action) => void runWorkflowAction(target, action)}
     onOpenAttachment={(path) => void openAttachment(path)}
@@ -615,7 +664,8 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
     attachmentThumbs={attachmentThumbs} saving={state.saving} addingAttachment={state.addingAttachment || importingAttachments}
     onCustomerInput={handleCustomerInput} onTitleInput={handleTitleInput}
     onNoteInput={(value) => setDraft((current) => ({ ...current, note: value }))}
-    onReceivedInput={(value) => setDraft((current) => ({ ...current, receivedAt: value }))}
+    onReceivedInput={(value) => setDraft((current) => updateTodoReceivedDate(current, value, Boolean(editingId)))}
+    onPlannedStartInput={(value) => setDraft((current) => ({ ...current, plannedStartAt: value }))}
     onDueInput={(value) => setDraft((current) => ({ ...current, dueAt: value }))}
     onClose={closeDialog} onSave={() => void saveTask()} onDelete={openDeleteFromDialog}
     smartArrangeAvailable={smartArrangeAvailable}
@@ -632,8 +682,7 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       <div className="todo-page-header">
         <div className="todo-heading-row">
           <div><h1>{heading}</h1><p>{renderNow.toLocaleDateString("zh-CN", {year:"numeric",month:"long",day:"numeric",weekday:"long"})}</p></div>
-          {archive && !searching && state.status === "completed" ? <button className="todo-add-btn" type="button" onClick={() => setArchive(false)}><span className="page-action-label">返回</span></button> :
-            <button className="todo-add-btn" type="button" onClick={() => openCreateDialog()} aria-label={todoTexts.newTask}>{todoIcons.add}<span className="page-action-label">新增</span></button>}
+          {archive && !searching && state.status === "completed" && <button className="todo-add-btn" type="button" onClick={() => setArchive(false)}><span className="page-action-label">返回</span></button>}
         </div>
       <div className="page-search">
         <SearchInput
@@ -663,6 +712,16 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
       </div>
       </div>
 
+      {!dialogOpen && <div className="todo-grouping-bar">
+        <span className="todo-grouping-label">分组方式</span>
+        <div className="todo-grouping-switch" role="group" aria-label="分组方式">
+          <button type="button" aria-pressed={viewPreferences.mode === "default"}
+            onClick={() => setViewPreferences(current => ({ ...current, mode: "default" }))}>按进度</button>
+          <button type="button" aria-pressed={viewPreferences.mode === "source"}
+            onClick={() => setViewPreferences(current => ({ ...current, mode: "source" }))}>按{wordPack.customerLabel}</button>
+        </div>
+      </div>}
+
       {dialogOpen ? editor : state.loading && state.tasks.length === 0 ? (
         <div className="todo-list">
           {[1, 2, 3].map((item) => (
@@ -687,6 +746,16 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
             {todoTexts.retry}
           </button>
         </div>
+      ) : viewPreferences.mode === "source" ? (
+        <SourceList key={JSON.stringify([state.status, archive, state.search])} groups={sourceGroups}
+          collapsedSources={viewPreferences.collapsedSources} onToggle={toggleSource} searching={searching}
+          renderTask={renderTaskCard} focusTaskId={highlightedTaskId} listRef={listRef}
+          summary={!searching && state.status === "completed" && !archive ? <h2 className="todo-group-title todo-completed-summary tone-completed">
+            <b aria-hidden="true" />最近 7 天完成<span>{completedGroups.recent.reduce((sum, group) => sum + group.tasks.length, 0)}</span><i aria-hidden="true" />
+            <button className="todo-completed-archive" type="button" onClick={() => setArchive(true)} disabled={!completedGroups.archived.length}>
+              归档 <span>{completedGroups.archived.reduce((sum, group) => sum + group.tasks.length, 0)}</span>
+            </button>
+          </h2> : undefined} />
       ) : !searching && state.status === "completed" ? (
         <CompletedList key={archive ? "archive" : "recent"} {...completedGroups} archive={archive} onArchive={() => setArchive(true)} renderTask={renderTaskCard} focusTaskId={highlightedTaskId} listRef={listRef} />
       ) : state.visibleTasks.length === 0 ? (
@@ -714,6 +783,10 @@ export default function TodoPage({ services, onOpenAttachment, onImportAttachmen
           )}
         </div>
       )}
+
+      {!dialogOpen && <button className="todo-floating-add" type="button" onClick={() => openCreateDialog()} aria-label={todoTexts.newTask} title={todoTexts.newTask}>
+        {todoIcons.add}
+      </button>}
 
       <StatusBar className="todo-statusbar" hint={statusBarHint({ dialogOpen, showingLogin, recognizing: state.recognizing, smartArrangeAvailable })}
         message={systemMessage ?? notice} onDismiss={() => { if (systemMessage) onDismissSystemMessage?.(); else setNotice(null); }}>

@@ -73,8 +73,30 @@ export interface TodoDraftFields {
   title: string;
   note: string;
   receivedAt: string;
+  plannedStartAt?: string;
   dueAt: string;
   attachmentPaths: string[];
+}
+
+export function createTodoDraftFields(now = new Date()): TodoDraftFields {
+  const receivedAt = toTodoDateInputValue(now.toISOString());
+  return { customerName: "", title: "", note: "", receivedAt, plannedStartAt: receivedAt, dueAt: "", attachmentPaths: [] };
+}
+
+export function updateTodoReceivedDate(draft: TodoDraftFields, value: string, editing: boolean): TodoDraftFields {
+  return {
+    ...draft,
+    receivedAt: value,
+    plannedStartAt: !editing && draft.plannedStartAt === draft.receivedAt ? value : draft.plannedStartAt,
+  };
+}
+
+export function validateTodoPlanDates(start: string | null | undefined, due: string | null | undefined): string | null {
+  const startDate = start ? toTodoDateInputValue(start) : "";
+  const dueDate = due ? toTodoDateInputValue(due) : "";
+  if (start && !startDate) return "计划开始日期无效，请重新选择或清空";
+  if (due && !dueDate) return "完成日期无效，请重新选择或清空";
+  return startDate && dueDate && startDate > dueDate ? "计划开始日期不能晚于完成日期" : null;
 }
 
 const statusRank: Record<TodoStatus, number> = {
@@ -114,14 +136,19 @@ export function getVisibleTodoTasks(tasks: TodoTask[]) {
 }
 
 export function isTodoInToday(task: TodoTask, now = new Date()) {
-  if (task.status === "completed") return false;
+  if (task.status === "completed" || task.cancelledAt) return false;
   if (task.urgentAt) return true;
+  const today = startOfLocalDay(now);
+  if (task.plannedStartAt) {
+    const start = new Date(task.plannedStartAt);
+    if (!Number.isNaN(start.getTime())) return startOfLocalDay(start) <= today;
+  }
   if (!task.dueAt) return true;
 
   const due = new Date(task.dueAt);
   if (Number.isNaN(due.getTime()) || Number.isNaN(now.getTime())) return true;
 
-  return startOfLocalDay(due) <= startOfLocalDay(now);
+  return startOfLocalDay(due) <= today;
 }
 
 export function getFilteredTodoTasks(
@@ -179,6 +206,25 @@ export interface TodoDisplayGroup {
   tasks: TodoTask[];
 }
 
+/** 来源只影响展示：保留传入的任务顺序，不改写来源字段。空来源单独置底。 */
+export function getTodoSourceGroups(tasks: TodoTask[], emptyLabel = "未填写来源"): TodoDisplayGroup[] {
+  const groups = new Map<string, TodoDisplayGroup>();
+  for (const task of tasks) {
+    const key = task.customerName.trim();
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, label: key || emptyLabel, tone: "normal", tasks: [] };
+      groups.set(key, group);
+    }
+    group.tasks.push(task);
+  }
+  return [...groups.values()].sort((a, b) => {
+    if (!a.key) return 1;
+    if (!b.key) return -1;
+    return a.key.localeCompare(b.key, "zh-CN") || a.key.localeCompare(b.key);
+  });
+}
+
 /** 展示分组不改变持久化状态；无日期和未来加急仍保留在今日。 */
 export function getTodoDisplayGroups(tasks: TodoTask[], filter: TodoFilter, searching: boolean, now = new Date(), words = DEFAULT_DUE_WORDS): TodoDisplayGroup[] {
   if (searching) {
@@ -194,8 +240,10 @@ export function getTodoDisplayGroups(tasks: TodoTask[], filter: TodoFilter, sear
   const day = startOfLocalDay(now);
   const keyFor = (task: TodoTask) => {
     const due = getActiveDueSortTime(task);
-    if (!Number.isFinite(due)) return "unscheduled";
+    const start = task.plannedStartAt ? startOfLocalDay(new Date(task.plannedStartAt)) : Number.NaN;
     if (due < day) return "overdue";
+    if (Number.isFinite(start) && start <= day && (due > day || !task.dueAt)) return "planned";
+    if (!Number.isFinite(due)) return "unscheduled";
     if (due === day) return task.status === "in_progress" ? "progress" : "pending";
     return "urgent";
   };
@@ -203,6 +251,7 @@ export function getTodoDisplayGroups(tasks: TodoTask[], filter: TodoFilter, sear
     { key: "overdue", label: "已逾期", tone: "overdue" },
     { key: "progress", label: `${words.expiringToday} · 进行中`, tone: "upcoming" },
     { key: "pending", label: `${words.expiringToday} · 未完成`, tone: "today" },
+    { key: "planned", label: "计划期内", tone: "upcoming" },
     { key: "urgent", label: "加急", tone: "overdue" },
     { key: "unscheduled", label: words.unscheduled, tone: "normal" },
   ].map(group => ({ ...group, tasks: tasks.filter(task => keyFor(task) === group.key) })).filter(group => group.tasks.length);
@@ -388,16 +437,26 @@ export function formatTodoReceivedLabel(value: string) {
   return `收 ${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+export function formatTodoPlanLabel(start: string | null | undefined, due: string | null | undefined) {
+  if (!start) return "";
+  const startDate = toTodoDateInputValue(start);
+  const dueDate = toTodoDateInputValue(due);
+  const differentYears = dueDate && startDate.slice(0, 4) !== dueDate.slice(0, 4);
+  const format = (value: string | null | undefined) => toTodoDateInputValue(value).slice(differentYears ? 0 : 5).replaceAll("-", "/");
+  return `计划 ${format(start)}${due ? `–${format(due)}` : "起"}`;
+}
+
 /** 表单显示值（YYYY-MM-DD）转 ISO；空串返回 null，允许保存无交付日期的任务。 */
 export function toTodoIsoDate(value: string) {
   if (!value) return null;
+  if (!toTodoDateInputValue(value)) return null;
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day).toISOString();
 }
 
 /** 时间戳转本地表单日期；已有日历日期保持原值，无效或空值返回空串。 */
-export function toTodoDateInputValue(value: string | null) {
+export function toTodoDateInputValue(value: string | null | undefined) {
   if (!value) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const calendarDate = new Date(`${value}T00:00:00.000Z`);
@@ -417,14 +476,15 @@ export function toTodoDateOffsetInputValue(days: number) {
   return toTodoDateInputValue(date.toISOString());
 }
 
-export function parseTodoDialogDateValue(value: string) {
+export function parseTodoDialogDateValue(value: string | undefined) {
+  if (!value) return null;
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return null;
   const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) || toLocalDateString(date) !== value ? null : date;
 }
 
-export function formatTodoDialogDateDisplay(value: string) {
+export function formatTodoDialogDateDisplay(value: string | undefined) {
   const date = parseTodoDialogDateValue(value);
   if (!date) return "";
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -462,13 +522,14 @@ export function applyTodoRecognitionDraft(
   const title = cleanRecognizedText(recognized.title);
   const note = cleanRecognizedText(recognized.note);
   const receivedAt = normalizeTodoRecognitionDueAt(recognized.receivedAt);
+  const plannedStartAt = normalizeTodoRecognitionDueAt(recognized.plannedStartAt);
   const dueAt = normalizeTodoRecognitionDueAt(recognized.dueAt);
   const attachmentPaths = mergeTodoAttachmentPaths(
     current.attachmentPaths,
     recognized.attachmentPaths,
   );
 
-  return {
+  const result: TodoDraftFields = {
     customerName: customerName ?? "",
     title: title ?? "",
     note: note ?? "",
@@ -476,6 +537,10 @@ export function applyTodoRecognitionDraft(
     dueAt: recognized.dueAt === null ? "" : dueAt ?? "",
     attachmentPaths,
   };
+  if (recognized.plannedStartAt !== undefined || current.plannedStartAt !== undefined) {
+    result.plannedStartAt = recognized.plannedStartAt === null ? "" : plannedStartAt || current.plannedStartAt || "";
+  }
+  return result;
 }
 
 export function reorderTodoAttachmentPaths(paths: string[], sourcePath: string, targetPath: string) {

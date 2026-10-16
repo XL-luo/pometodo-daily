@@ -14,9 +14,11 @@ export interface TodoTask {
   note: string;
   status: TodoStatus;
   receivedAt: string;
+  plannedStartAt?: string | null;
   dueAt: string | null;
   urgentAt?: string | null;
   completedAt: string | null;
+  cancelledAt?: string | null;
   attachmentPaths: string[];
   updatedAt?: string;
 }
@@ -27,6 +29,7 @@ export interface TodoDraft {
   title: string;
   note: string;
   receivedAt: string;
+  plannedStartAt?: string | null;
   dueAt: string | null;
   attachmentPaths: string[];
 }
@@ -36,6 +39,7 @@ export interface TodoRecognitionDraft {
   title?: string | null;
   note?: string | null;
   receivedAt?: string | null;
+  plannedStartAt?: string | null;
   /** null 表示明确没有交付日期并清空默认值；未提供则保留手工值。 */
   dueAt?: string | null;
   attachmentPaths?: string[] | null;
@@ -58,6 +62,7 @@ export interface TodoServices {
   createTask(draft: TodoDraft): Promise<TodoTask>;
   updateTask(id: string, draft: TodoDraft): Promise<TodoTask>;
   setTaskStatus(id: string, status: TodoStatus): Promise<TodoTask>;
+  cancelTask(id: string): Promise<TodoTask>;
   setTaskUrgent(id: string, urgent: boolean): Promise<TodoTask>;
   deleteTask(id: string): Promise<void>;
   recognizeClipboard(): Promise<TodoRecognitionResult>;

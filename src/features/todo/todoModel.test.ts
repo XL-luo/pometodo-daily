@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TODO_QUICK_DUE_OPTIONS,
   applyTodoRecognitionDraft,
+  createTodoDraftFields,
+  updateTodoReceivedDate,
+  validateTodoPlanDates,
+  getTodoSourceGroups,
   formatTodoReceivedLabel,
   getFilteredTodoTasks,
   getTodoDeferOptions,
   getTodoDueInfo,
+  getTodoDisplayGroups,
   getTodoListSlice,
   getTodoStatusCounts,
   getTodoWorkflowActions,
@@ -15,6 +20,7 @@ import {
   reorderTodoAttachmentPaths,
   serializeTodoQuickDueOptions,
   getVisibleTodoTasks,
+  isTodoInToday,
   matchTodoSearch,
   shouldShowTodoNote,
   toTodoDateInputValue,
@@ -673,5 +679,68 @@ describe("todoModel", () => {
     const iso = toTodoIsoDate("2026-06-26");
     expect(iso).not.toBeNull();
     expect(toTodoDateInputValue(iso)).toBe("2026-06-26");
+  });
+
+  it("shows a task throughout its planned date range and after it is overdue", () => {
+    const task = { ...noDueTask, plannedStartAt: "2026-06-25T00:00:00.000Z", dueAt: "2026-06-27T00:00:00.000Z" };
+    expect(isTodoInToday(task, new Date("2026-06-24T10:00:00.000Z"))).toBe(false);
+    expect(isTodoInToday(task, new Date("2026-06-25T10:00:00.000Z"))).toBe(true);
+    expect(isTodoInToday(task, new Date("2026-06-26T10:00:00.000Z"))).toBe(true);
+    expect(isTodoInToday(task, new Date("2026-06-27T10:00:00.000Z"))).toBe(true);
+    expect(isTodoInToday(task, new Date("2026-06-28T10:00:00.000Z"))).toBe(true);
+    expect(getTodoDisplayGroups([task], "today", false, new Date("2026-06-26T10:00:00.000Z")).map(group => group.key)).toEqual(["planned"]);
+  });
+
+  it("defaults the first planned date to receipt and preserves an independent choice or edit", () => {
+    const draft = createTodoDraftFields(new Date(2026, 9, 1, 12));
+    expect(draft.plannedStartAt).toBe("2026-10-01");
+    expect(updateTodoReceivedDate(draft, "2026-10-02", false).plannedStartAt).toBe("2026-10-02");
+    expect(updateTodoReceivedDate({ ...draft, plannedStartAt: "2026-10-05" }, "2026-10-02", false).plannedStartAt).toBe("2026-10-05");
+    expect(updateTodoReceivedDate({ ...draft, plannedStartAt: "" }, "2026-10-02", false).plannedStartAt).toBe("");
+    expect(updateTodoReceivedDate(draft, "2026-10-02", true).plannedStartAt).toBe("2026-10-01");
+  });
+
+  it("validates calendar dates without swapping the planned range", () => {
+    expect(validateTodoPlanDates("2026-10-05", "2026-10-01")).toContain("不能晚于");
+    expect(validateTodoPlanDates("2026-02-30", "2026-10-01")).toContain("无效");
+    expect(toTodoIsoDate("2026-02-30")).toBeNull();
+    expect(validateTodoPlanDates("2026-10-01T23:00:00+08:00", "2026-10-01T08:00:00+08:00")).toBeNull();
+    expect(validateTodoPlanDates("2026-10-01", null)).toBeNull();
+    expect(validateTodoPlanDates(null, "2026-10-01")).toBeNull();
+  });
+
+  it("keeps start-only, urgent and legacy rules consistent across counts and both groups", () => {
+    const now = new Date(2026, 9, 2, 12);
+    const date = (day: number) => toTodoIsoDate(`2026-10-${String(day).padStart(2, "0")}`)!;
+    const tasks: TodoTask[] = [
+      { ...noDueTask, id: "overdue", plannedStartAt: date(1), dueAt: date(1) },
+      { ...noDueTask, id: "due", plannedStartAt: date(1), dueAt: date(2) },
+      { ...noDueTask, id: "planned", plannedStartAt: date(1), dueAt: date(5) },
+      { ...noDueTask, id: "start-only", plannedStartAt: date(2) },
+      { ...noDueTask, id: "future", plannedStartAt: date(3) },
+      { ...noDueTask, id: "urgent", plannedStartAt: date(3), dueAt: date(5), urgentAt: date(2) },
+      { ...noDueTask, id: "legacy" },
+      { ...noDueTask, id: "legacy-future", dueAt: date(5) },
+      { ...noDueTask, id: "done", plannedStartAt: date(1), status: "completed", urgentAt: date(2) },
+      { ...noDueTask, id: "cancelled", plannedStartAt: date(1), cancelledAt: date(2) },
+    ];
+    const filtered = getFilteredTodoTasks(tasks, "today", now);
+    expect(filtered.map(t => t.id)).toEqual(["overdue", "due", "planned", "start-only", "urgent", "legacy"]);
+    expect(getTodoStatusCounts(tasks, now).today).toBe(filtered.length);
+    const groups = getTodoDisplayGroups(filtered, "today", false, now);
+    expect(groups.map(g => g.key)).toEqual(["overdue", "pending", "planned", "urgent", "unscheduled"]);
+    expect(groups.flatMap(g => g.tasks).map(t => t.id).sort()).toEqual(filtered.map(t => t.id).sort());
+    expect(getTodoSourceGroups(filtered).flatMap(g => g.tasks).map(t => t.id).sort()).toEqual(filtered.map(t => t.id).sort());
+    expect(isTodoInToday(tasks[3], new Date(2026, 9, 1, 12))).toBe(false);
+    expect(isTodoInToday(tasks[3], new Date(2026, 9, 8, 12))).toBe(true);
+  });
+
+  it("recognizes and clears start separately from receipt and completion", () => {
+    const draft = createTodoDraftFields(new Date(2026, 9, 1));
+    const recognized = applyTodoRecognitionDraft(draft, { receivedAt: "2026-09-28", plannedStartAt: "2026-10-02", dueAt: "2026-10-05" });
+    expect(toTodoDateInputValue(recognized.receivedAt)).toBe("2026-09-28");
+    expect(toTodoDateInputValue(recognized.plannedStartAt)).toBe("2026-10-02");
+    expect(toTodoDateInputValue(recognized.dueAt)).toBe("2026-10-05");
+    expect(applyTodoRecognitionDraft(recognized, { plannedStartAt: null }).plannedStartAt).toBe("");
   });
 });

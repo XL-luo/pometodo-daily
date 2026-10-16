@@ -19,6 +19,7 @@ export interface TodoWordPack {
   noCustomer: string;
   /** 表单时间字段名 */
   receivedAtLabel: string;
+  plannedStartAtLabel: string;
   dueAtLabel: string;
   /** 标题字段名与占位符 */
   titleLabel: string;
@@ -40,7 +41,8 @@ const fieldWordPacks: Record<FieldPackKey, TodoWordPack> = {
     customerAria: "来源",
     noCustomer: "未填写来源",
     receivedAtLabel: "接收时间",
-    dueAtLabel: "交付时间",
+    plannedStartAtLabel: "计划开始日期",
+    dueAtLabel: "计划交付日期",
     titleLabel: "任务内容",
     titlePlaceholder: "待办事项",
     todayWord: "今日",
@@ -54,7 +56,8 @@ const fieldWordPacks: Record<FieldPackKey, TodoWordPack> = {
     customerAria: "事项",
     noCustomer: "",
     receivedAtLabel: "记录时间",
-    dueAtLabel: "完成时间",
+    plannedStartAtLabel: "计划开始日期",
+    dueAtLabel: "计划完成日期",
     titleLabel: "要点",
     titlePlaceholder: "要做什么",
     todayWord: "今天",
@@ -68,7 +71,8 @@ const fieldWordPacks: Record<FieldPackKey, TodoWordPack> = {
     customerAria: "主题",
     noCustomer: "未填主题",
     receivedAtLabel: "记录时间",
-    dueAtLabel: "完成时间",
+    plannedStartAtLabel: "计划开始日期",
+    dueAtLabel: "计划完成日期",
     titleLabel: "学习内容",
     titlePlaceholder: "学习要点",
     todayWord: "今天",

@@ -26,11 +26,11 @@ describe("wordPacks 场景词包", () => {
 
   it("完成/交付动词按场景区分：工作=交付，生活/学习=完成", () => {
     expect(wordPackFor("来源").dueWord).toBe("交付");
-    expect(wordPackFor("来源").dueAtLabel).toBe("交付时间");
+    expect(wordPackFor("来源").dueAtLabel).toBe("计划交付日期");
     expect(wordPackFor("事项").dueWord).toBe("完成");
-    expect(wordPackFor("事项").dueAtLabel).toBe("完成时间");
+    expect(wordPackFor("事项").dueAtLabel).toBe("计划完成日期");
     expect(wordPackFor("主题").dueWord).toBe("完成");
-    expect(wordPackFor("主题").dueAtLabel).toBe("完成时间");
+    expect(wordPackFor("主题").dueAtLabel).toBe("计划完成日期");
   });
 
   it("dueWordsFor 生成整套到期标签", () => {

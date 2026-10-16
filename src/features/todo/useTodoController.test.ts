@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TodoDraft, TodoServices, TodoTask } from "../../contracts/todo";
 import { createTodoControllerCore } from "./useTodoController";
 
@@ -24,6 +24,7 @@ function makeServices(overrides: Partial<TodoServices> = {}): TodoServices {
     createTask: () => Promise.resolve(makeTask()),
     updateTask: () => Promise.resolve(makeTask()),
     setTaskStatus: () => Promise.resolve(makeTask()),
+    cancelTask: () => Promise.resolve(makeTask()),
     setTaskUrgent: () => Promise.resolve(makeTask()),
     deleteTask: () => Promise.resolve(),
     recognizeClipboard: () =>
@@ -46,6 +47,21 @@ const sampleDraft: TodoDraft = {
 };
 
 describe("todo controller core", () => {
+  it("recalculates today's list and count after midnight without changing task status", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 9, 1, 23, 59));
+      const task = makeTask({ plannedStartAt: new Date(2026, 9, 2).toISOString(), dueAt: new Date(2026, 9, 5).toISOString() });
+      const core = createTodoControllerCore(makeServices({ listTasks: async () => [task] }));
+      await core.loadTasks();
+      expect(core.getState().counts.today).toBe(0);
+      vi.setSystemTime(new Date(2026, 9, 2, 0, 1));
+      core.recompute();
+      expect(core.getState().counts.today).toBe(1);
+      expect(core.getState().visibleTasks).toEqual([task]);
+      expect(core.getState().tasks[0].status).toBe("pending");
+    } finally { vi.useRealTimers(); }
+  });
   it("searches all statuses and restores the original filter when cleared", async () => {
     const tasks = [
       makeTask({ id: "pending", title: "星河展板", dueAt: "2099-01-01T00:00:00Z" }),
@@ -75,6 +91,7 @@ describe("todo controller core", () => {
         createTask: () => Promise.resolve(saved),
         updateTask: () => Promise.resolve(saved),
         setTaskStatus: () => Promise.resolve(saved),
+        cancelTask: () => Promise.resolve(saved),
         setTaskUrgent: () => Promise.resolve(saved),
       }));
       const loading = core.loadTasks();

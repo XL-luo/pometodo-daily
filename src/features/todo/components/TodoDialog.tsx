@@ -20,7 +20,7 @@ export function smartArrangeToneClass(tone: SmartArrangeEntryTone | undefined): 
   return "tone-medium";
 }
 
-export type TodoDialogDateField = "receivedAt" | "dueAt";
+export type TodoDialogDateField = "receivedAt" | "plannedStartAt" | "dueAt";
 
 /** 识别剪贴板在按钮上的状态文案；local/empty 不标成 AI 成功。 */
 export type TodoRecognitionView =
@@ -61,6 +61,7 @@ interface TodoDialogProps {
   onTitleInput: (value: string) => void;
   onNoteInput: (value: string) => void;
   onReceivedInput: (value: string) => void;
+  onPlannedStartInput?: (value: string) => void;
   onDueInput: (value: string) => void;
   onClose: () => void;
   onSave: () => void;
@@ -91,6 +92,7 @@ export default function TodoDialog({
   onTitleInput,
   onNoteInput,
   onReceivedInput,
+  onPlannedStartInput,
   onDueInput,
   onClose,
   onSave,
@@ -118,6 +120,11 @@ export default function TodoDialog({
   }, [showingAccount]);
   const fileInput = useRef<HTMLInputElement>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!activeDateField) return;
+    noteRef.current?.closest(".todo-task-editor")?.querySelector(".todo-dialog-calendar")?.scrollIntoView({ block: "nearest" });
+  }, [activeDateField]);
 
   // 备注高度随内容自适应（最多约三行，超出内部滚动）；识别回填与手动输入共用。
   useLayoutEffect(() => {
@@ -156,6 +163,8 @@ export default function TodoDialog({
   const selectDate = (field: TodoDialogDateField, value: string) => {
     if (field === "receivedAt") {
       onReceivedInput(value);
+    } else if (field === "plannedStartAt") {
+      onPlannedStartInput?.(value);
     } else {
       onDueInput(value);
     }
@@ -189,18 +198,19 @@ export default function TodoDialog({
         onShiftMonth={(offset) => setCalendarMonth((date) => shiftCalendarMonth(date, offset))}
         selectedDate={parseTodoDialogDateValue(draft[field])}
         onSelect={(value) => selectDate(field, value)}
-        onClear={field === "dueAt" ? () => selectDate(field, "") : undefined}
-        clearLabel={dueWords.clear}
+        onClear={field !== "receivedAt" ? () => selectDate(field, "") : undefined}
+        clearLabel={field === "plannedStartAt" ? "不设计划开始日期" : dueWords.clear}
       />
     );
   };
 
   const renderDateField = (field: TodoDialogDateField, placeholder: string) => (
     <div className="todo-dialog-field todo-dialog-date-field">
-      <span className="todo-dialog-label">{field === "receivedAt" ? pack.receivedAtLabel : pack.dueAtLabel}</span>
+      <span className="todo-dialog-label">{field === "receivedAt" ? pack.receivedAtLabel : field === "plannedStartAt" ? pack.plannedStartAtLabel : pack.dueAtLabel}</span>
       <div
         className={`todo-dialog-date-control${activeDateField === field ? " open" : ""}`}
         role="button"
+        aria-label={field === "receivedAt" ? pack.receivedAtLabel : field === "plannedStartAt" ? pack.plannedStartAtLabel : pack.dueAtLabel}
         tabIndex={0}
         onClick={() => openDatePicker(field)}
         onKeyDown={(event) => handleDateControlKeyDown(event, field)}
@@ -310,6 +320,9 @@ export default function TodoDialog({
           </label>
           <div className="todo-dialog-date-grid">
             {renderDateField("receivedAt", "")}
+          </div>
+          <div className="todo-dialog-date-grid">
+            {renderDateField("plannedStartAt", "")}
             {renderDateField("dueAt", "")}
           </div>
           <div className="todo-dialog-date-shortcuts">

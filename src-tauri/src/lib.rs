@@ -3,6 +3,9 @@ mod ai_http;
 mod clipboard;
 mod commands;
 mod context_menu;
+mod daily_commands;
+mod daily_extract;
+mod daily_report;
 mod distribution;
 mod file_commands;
 mod floating;
@@ -46,9 +49,9 @@ pub fn run() {
         .plugin(
             tauri_plugin_autostart::Builder::new()
                 .app_name(if cfg!(debug_assertions) {
-                    "PomeTodo Development"
+                    "PomeTodo Daily Development"
                 } else {
-                    "PomeTodo"
+                    "PomeTodo Daily"
                 })
                 .arg("--autostart")
                 .build(),
@@ -86,7 +89,7 @@ pub fn run() {
             };
             TrayIconBuilder::new()
                 .icon(app_icon())
-                .tooltip("PomeTodo 待办")
+                .tooltip("PomeTodo 待办与日报")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -200,6 +203,9 @@ pub fn run() {
                 file_commands::pometodo_choose_backup_import,
                 file_commands::pometodo_import_backup,
                 floating::pometodo_float_expand,
+                floating::pometodo_float_drag_start,
+                floating::pometodo_float_dock_state,
+                floating::pometodo_float_dock_reveal,
                 floating::pometodo_float_present,
                 floating::pometodo_float_preview_state,
                 floating::pometodo_float_menu,
@@ -212,8 +218,17 @@ pub fn run() {
                 commands::pometodo_create_task,
                 commands::pometodo_update_task,
                 commands::pometodo_set_status,
+                commands::pometodo_cancel_task,
                 commands::pometodo_set_urgent,
                 commands::pometodo_delete_task,
+                daily_commands::pometodo_daily_snapshot,
+                daily_commands::pometodo_daily_create_source,
+                daily_commands::pometodo_daily_create_sources,
+                daily_commands::pometodo_daily_update_source,
+                daily_commands::pometodo_daily_recognize_attachment,
+                daily_commands::pometodo_daily_delete_source,
+                daily_commands::pometodo_daily_save_report,
+                daily_commands::pometodo_daily_generate,
                 commands::pometodo_attachment_data_url,
                 commands::pometodo_open_attachment,
                 clipboard::pometodo_recognize_clipboard,

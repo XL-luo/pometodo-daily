@@ -56,3 +56,17 @@ describe("新增/编辑页智能整理按钮", () => {
     expect(css).toMatch(/\[data-theme="dark"\] \.pometodo-todo \.todo-dialog-header \.todo-recognize-btn\.tone-medium/);
   });
 });
+
+describe("编辑页删除操作", () => {
+  it("编辑态提供可访问的红色删除按钮，新增态不显示", () => {
+    const editing = renderToStaticMarkup(<TodoDialog {...dialogProps({ editing: true })} />);
+    expect(editing).toMatch(/class="todo-dialog-delete-btn card-delete-btn"[^>]*aria-label="删除"/);
+    expect(renderToStaticMarkup(<TodoDialog {...dialogProps()} />)).not.toContain("todo-dialog-delete-btn");
+  });
+  it("删除按钮和确认按钮使用实色危险样式并保留键盘焦点", () => {
+    const css = readFileSync(fileURLToPath(new URL("../todo.css", import.meta.url)), "utf8");
+    expect(css).toMatch(/\.todo-lite-button\.danger \{\s*background: var\(--red\);\s*color: #fff;/);
+    expect(css).toMatch(/\.todo-dialog-delete-btn\.card-delete-btn \{\s*width: 42px;[\s\S]*background: var\(--red\);/);
+    expect(css).toMatch(/\.todo-dialog-delete-btn\.card-delete-btn:focus-visible \{/);
+  });
+});

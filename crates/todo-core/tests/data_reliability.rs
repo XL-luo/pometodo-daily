@@ -15,6 +15,7 @@ fn draft(title: &str, attachment_paths: Vec<String>) -> TodoDraft {
         title: title.into(),
         note: "虚构内容\n第二行与 emoji 🍊".into(),
         received_at: "2026-09-06T09:30:00+08:00".into(),
+        planned_start_at: None,
         due_at: Some("2026-09-08T18:00:00+08:00".into()),
         attachment_paths,
     }

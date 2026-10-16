@@ -1,22 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { TodoTask } from "../contracts/todo";
 import { getTodoDueInfo } from "../features/todo/todoModel";
 import { wordPackFor } from "../features/todo/wordPacks";
 import "./floating.css";
 
-/** The preview follows the WPF due/status/update order, independent of urgent flags. */
+type DockSide = "left" | "right";
+type DockStatus = { side: DockSide | null; hidden: boolean };
+
+/** The preview puts active urgent work first, then follows the WPF due/status/update order. */
 export function getFloatingTasks(rows: TodoTask[]): TodoTask[] {
   const dueTime = (value: string | null) => {
     const time = value ? Date.parse(value) : NaN;
     return Number.isFinite(time) ? time : Infinity;
   };
   return rows.filter(task => task.status === "pending" || task.status === "in_progress")
-    .sort((a, b) => dueTime(a.dueAt) - dueTime(b.dueAt)
+    .sort((a, b) => {
+      const aUrgent = Boolean(a.urgentAt);
+      const bUrgent = Boolean(b.urgentAt);
+      if (aUrgent !== bUrgent) return bUrgent ? 1 : -1;
+      if (aUrgent && bUrgent) {
+        const urgentDiff = (Date.parse(b.urgentAt ?? "") || 0) - (Date.parse(a.urgentAt ?? "") || 0);
+        if (urgentDiff !== 0) return urgentDiff;
+      }
+      return dueTime(a.dueAt) - dueTime(b.dueAt)
       || Number(b.status === "in_progress") - Number(a.status === "in_progress")
-      || (Date.parse(b.updatedAt ?? "") || 0) - (Date.parse(a.updatedAt ?? "") || 0));
+      || (Date.parse(b.updatedAt ?? "") || 0) - (Date.parse(a.updatedAt ?? "") || 0);
+    });
+}
+
+export function getFloatingTaskStatusLabel(task: TodoTask) {
+  const statusLabel = task.status === "in_progress" ? "进行中" : "未完成";
+  return task.urgentAt ? `加急 · ${statusLabel}` : statusLabel;
 }
 
 export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean }) {
@@ -25,6 +41,7 @@ export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean })
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [above, setAbove] = useState(false);
+  const [dock, setDock] = useState<DockStatus>({ side: null, hidden: false });
   const expandedRef = useRef(false);
   const changing = useRef(false);
   const transitionVersion = useRef(0);
@@ -90,17 +107,28 @@ export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean })
         }));
       };
     const presentSubscription = listen<boolean>("pometodo-floating-present", ({ payload }) => present(payload));
+    let dockVersion = 0;
+    const dockSubscription = previewOnly ? Promise.resolve(() => {}) : listen<DockStatus>("pometodo-floating-dock-state", ({ payload }) => {
+      dockVersion += 1;
+      if (active) setDock(payload);
+    });
     const subscriptions = [
       listen("pometodo-floating-refresh", () => void refresh()),
       listen("pometodo-floating-collapse", collapse),
       listen<string>("pometodo-floating-error", ({ payload }) => { if (active) setError(payload); }),
       listen("pometodo-floating-closed", () => { expandedRef.current = false; setExpanded(false); }),
       presentSubscription,
+      dockSubscription,
     ];
     const initialVersion = transitionVersion.current;
     if (previewOnly) void Promise.all(subscriptions).then(() => invoke<boolean | null>("pometodo_float_preview_state"))
       .then(value => { if (active && initialVersion === transitionVersion.current && value !== null) present(value); })
       .catch(() => { if (active) setError("预览暂不可用"); });
+    if (!previewOnly) void dockSubscription.then(async () => {
+      const version = dockVersion;
+      const status = await invoke<DockStatus>("pometodo_float_dock_state");
+      if (active && version === dockVersion) setDock(status);
+    }).catch(() => {});
     for (const subscription of subscriptions) void subscription.catch(() => { if (active) setError("浮球事件连接失败，请重新打开应用。"); });
     const timer = setInterval(() => void refresh(), 30000);
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -145,7 +173,9 @@ export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean })
     } catch { setError("未能打开待办，请从托盘重试。"); }
   }
 
-  return <div className={`pome-floating-shell${previewOnly ? " preview-only" : ""}${above ? " above" : ""}${expanded ? " expanded" : ""}`}>
+  return <div
+    className={`pome-floating-shell${previewOnly ? " preview-only" : ""}${above ? " above" : ""}${expanded ? " expanded" : ""}${dock.side ? ` docked dock-${dock.side}` : ""}${dock.hidden ? " docked-hidden" : ""}`}
+  >
     {!previewOnly && <div className="pome-floating-ball-row">
       <button ref={ball} className="pome-floating-ball" aria-expanded={expanded} aria-controls="floating-preview"
         aria-label={`${expanded ? "收起" : "展开"}待办浮球，共 ${tasks.length} 项`}
@@ -164,7 +194,7 @@ export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean })
           if (start && event.buttons === 1 && !start.dragged && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 5) {
             start.dragged = true;
             event.currentTarget.releasePointerCapture(event.pointerId);
-            void getCurrentWindow().startDragging().catch(() => setError("浮球未能移动，请重试。"));
+            void invoke("pometodo_float_drag_start").catch(() => setError("浮球未能移动，请重试。"));
           }
         }}
         onClick={() => { if (!drag.current?.dragged) void toggle(); drag.current = null; }}>
@@ -180,10 +210,12 @@ export function FloatingBall({ previewOnly = false }: { previewOnly?: boolean })
         <div className="pome-float-tasks">{tasks.slice(0, 3).map(task => {
           const wordPack = wordPackFor(customerLabel ?? undefined);
           const due = getTodoDueInfo(task, new Date(), { today: `今天${wordPack.dueWord}`, tomorrow: `明天${wordPack.dueWord}`, onTime: `按时${wordPack.dueWord}`, late: days => `逾期 ${days} 天${wordPack.dueWord}`, unscheduled: `未设${wordPack.dueWord}日期`, clear: `不设${wordPack.dueWord}日期`, expiringToday: `${wordPack.todayWord}到期` });
-          return <button className="pome-float-task" key={task.id} onClick={() => void open(task.id)}>
+          const taskLabel = getFloatingTaskStatusLabel(task);
+          return <button className="pome-float-task" key={task.id} title={taskLabel} onClick={() => void open(task.id)}>
             <div className="pome-float-task-heading">
-              <span className={`pome-float-status ${task.status}`} aria-label={task.status === "in_progress" ? "进行中" : "未完成"} />
+              <span className={`pome-float-status ${task.status}${task.urgentAt ? " urgent" : ""}`} aria-label={taskLabel} />
               <strong>{task.title}</strong>
+              {task.urgentAt && <span className="pome-float-urgent-badge" aria-label="加急">急</span>}
               <small className={`pome-float-due ${due?.tone ?? "normal"}`}>{due?.label ?? `未设${wordPack.dueWord}`}</small>
             </div>
             <span className="pome-float-customer">{task.customerName}</span>

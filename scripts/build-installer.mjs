@@ -63,17 +63,17 @@ try {
   if (offline) cliArgs.push("--offline");
   run(process.execPath, cliArgs);
   const bundle = join(env.CARGO_TARGET_DIR, "release/bundle/nsis");
-  const installers = readdirSync(bundle).filter(name => name === `PomeTodo_${pkg.version}_x64-setup.exe`);
+  const installers = readdirSync(bundle).filter(name => name === `${config.productName}_${pkg.version}_x64-setup.exe`);
   if (installers.length !== 1) throw new Error("未找到本次版本的唯一安装包");
   mkdirSync(destination, { recursive: true });
-  const installerName = `PomeTodo-${pkg.version}-${mode}-setup.exe`;
+  const installerName = `PomeTodo-Daily-${pkg.version}-${mode}-setup.exe`;
   const installer = join(destination, installerName);
   const executable = join(destination, "pometodo-desktop.exe");
   copyFileSync(join(bundle, installers[0]), installer);
   copyFileSync(join(env.CARGO_TARGET_DIR, "release/pometodo-desktop.exe"), executable);
   const record = {
-    product: "pometodo", version: pkg.version, mode,
-    channel: mode === "official" ? "standalone" : "byok",
+    product: "pometodo-daily", version: pkg.version, mode,
+    channel: "local-daily",
     builtAt: new Date().toISOString(), candidate: true,
     installer: installerName, sha256: sha(installer), byteLength: readFileSync(installer).length,
     executableSha256: sha(executable),

@@ -22,6 +22,11 @@
 .pometodo-todo .todo-add-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 5px; height: var(--page-action-height); min-width: var(--page-action-width); padding: 0 18px; border: 1px solid transparent; border-radius: 6px; background: var(--page-action-bg); color: var(--page-action-text); font: 600 12.5px/18px var(--font); cursor: pointer; }
 .pometodo-todo .todo-add-btn:hover { background: var(--page-action-hover); }
 .pometodo-todo .todo-add-btn svg { width: 14px; height: 14px; }
+.pometodo-todo .todo-floating-add { position: absolute; z-index: 4; left: 50%; bottom: 48px; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 1px solid color-mix(in srgb, var(--page-action-bg) 84%, #fff); border-radius: 50%; background: var(--page-action-bg); color: var(--page-action-text); box-shadow: 0 7px 18px rgba(24, 27, 31, .24), 0 1px 3px rgba(24, 27, 31, .18); cursor: pointer; transform: translateX(-50%); transition: transform .16s ease-out, box-shadow .16s ease-out, background .16s ease-out; }
+.pometodo-todo .todo-floating-add:hover { background: var(--page-action-hover); box-shadow: 0 10px 22px rgba(24, 27, 31, .28), 0 2px 5px rgba(24, 27, 31, .2); transform: translateX(-50%) translateY(-2px); }
+.pometodo-todo .todo-floating-add:active { transform: translateX(-50%) translateY(0) scale(.96); }
+.pometodo-todo .todo-floating-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pometodo-todo .todo-floating-add svg { width: 25px; height: 25px; stroke-width: 2.4; }
 
 /* === Notice === */
 .pometodo-todo .todo-notice {
@@ -84,7 +89,7 @@
 }
 
 /* === List / task status === */
-.pometodo-todo .todo-list { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; overflow-y: auto; padding: 12px 14px; }
+.pometodo-todo .todo-list { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; overflow-y: auto; padding: 12px 14px 82px; }
 .pometodo-todo .todo-card { --color: var(--stripe-normal); }
 .pometodo-todo .todo-card.status-in_progress { --color: var(--blue); }
 .pometodo-todo .todo-card.tone-overdue:not(.status-completed) { --color: var(--red); }
@@ -116,6 +121,22 @@
 .pometodo-todo .todo-completed-cards { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
 .pometodo-todo .todo-completed-cards .notification { animation: none; content-visibility: visible; }
 
+/* === Source grouping === */
+.pometodo-todo .todo-grouping-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; padding: 8px 14px 0; }
+.pometodo-todo .todo-grouping-label { color: var(--text-muted); font-size: 11.5px; }
+.pometodo-todo .todo-grouping-switch { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--separator); border-radius: 7px; background: var(--input-bg); }
+.pometodo-todo .todo-grouping-switch button { border: 0; border-radius: 5px; padding: 4px 10px; background: transparent; color: var(--text-muted); font: 500 11.5px/18px var(--font); cursor: pointer; }
+.pometodo-todo .todo-grouping-switch button[aria-pressed="true"] { background: var(--panel-bg); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.pometodo-todo .todo-grouping-switch button:focus-visible, .pometodo-todo .todo-source-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pometodo-todo .todo-source-group { flex-shrink: 0; min-width: 0; }
+.pometodo-todo .todo-source-heading { margin: 0; font: inherit; }
+.pometodo-todo .todo-source-name { min-width: 0; flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pometodo-todo .todo-source-toggle .todo-completed-count { flex-shrink: 0; }
+.pometodo-todo .todo-source-group.open .todo-completed-chevron { transform: rotate(90deg); }
+.pometodo-todo .todo-source-group.open .todo-source-toggle { background: var(--panel-bg); }
+.pometodo-todo .todo-source-cards:not([hidden]) { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.pometodo-todo .todo-source-cards .notification { animation: none; content-visibility: visible; }
+
 /* === Old WPF card typography and badges === */
 /* 圆角裁切属于卡片自身，不能依赖 content-visibility 的隐式绘制隔离。 */
 .pometodo-todo .todo-card { border-radius: 8px; overflow: hidden; background: var(--panel-bg); flex-shrink: 0; }
@@ -128,6 +149,8 @@
 .pometodo-todo .todo-card-received { flex-shrink: 0; white-space: nowrap; }
 .pometodo-todo .todo-card-status-pill, .pometodo-todo .todo-card-urgent-badge { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 1px 8px; border: 0; border-radius: 9px; background: var(--red-soft); color: var(--red); font: 400 10.5px/16px var(--font); white-space: nowrap; }
 .pometodo-todo .todo-card-urgent-badge { cursor: pointer; }
+.pometodo-todo .todo-card-cancelled-badge { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 1px 8px; border: 1px solid var(--separator); border-radius: 9px; background: var(--input-bg); color: var(--text-secondary); font: 400 10.5px/16px var(--font); white-space: nowrap; }
+.pometodo-todo .todo-card-completed-badge { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 1px 8px; border: 1px solid var(--green-border); border-radius: 9px; background: var(--green-soft); color: var(--green); font: 400 10.5px/16px var(--font); white-space: nowrap; }
 .pometodo-todo .todo-card-status-pill.today { background: var(--amber-soft); color: var(--amber-text); }
 .pometodo-todo .todo-card-status-pill.upcoming { background: var(--blue-soft); color: var(--blue); }
 .pometodo-todo .todo-card-body { padding: 0 13px 0 10px; min-height: 19.5px; word-break: break-word; color: var(--text-primary); user-select: text; }
@@ -135,6 +158,9 @@
 .pometodo-todo .todo-card-note { margin-top: 3px; color: var(--text-muted); font: 400 12px/18px var(--font); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; }
 .pometodo-todo .todo-card-footer { padding: 8px 13px 11px 10px; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pometodo-todo .todo-card-meta { display: flex; flex: 1; min-width: 0; gap: 6px; flex-wrap: wrap; }
+.pometodo-todo .todo-card-completion-meta { display: inline-flex; align-items: center; min-height: 21px; color: var(--green); font: 400 11.5px/16px var(--font); white-space: nowrap; }
+.pometodo-todo .todo-card-completion-meta.cancelled { color: var(--text-secondary); }
+.pometodo-todo .todo-card-plan-meta { display: inline-flex; align-items: center; min-height: 21px; color: var(--text-muted); font: 400 11.5px/16px var(--font); overflow-wrap: anywhere; }
 .pometodo-todo .todo-card-due-badge, .pometodo-todo .todo-card-attachment-badge { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 21px; padding: 2px 8px; border: 1px solid var(--separator); border-radius: 4px; background: var(--input-bg); color: var(--text-secondary); font: 400 11.5px/16px var(--font); white-space: nowrap; cursor: pointer; }
 .pometodo-todo .todo-card-due-badge.readonly { cursor: default; }
 .pometodo-todo .todo-card-attachment-badge:hover { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); }
@@ -148,15 +174,16 @@
 
 /* === Card actions === */
 .pometodo-todo .todo-urgent-action {
-  opacity: 0;
+  color: var(--text-muted);
 }
 
-.pometodo-todo .notification:hover .todo-urgent-action {
-  opacity: 1;
+.pometodo-todo .todo-urgent-action.urgent {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: var(--red-soft);
 }
 
 .pometodo-todo .todo-workflow-action {
-  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -171,18 +198,60 @@
   font-weight: var(--weight-normal);
   line-height: 1;
   cursor: pointer;
-  opacity: 0;
+  opacity: 1;
   white-space: nowrap;
 }
 
-.pometodo-todo .notification:is(:hover, :focus-within) .todo-workflow-action {
-  opacity: 1;
+/* B 版：次要操作使用固定尺寸图标，开始/完成/恢复保留图标与文字。 */
+.pometodo-todo .todo-workflow-action.compact-action {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+/* 紧凑按钮保留文字给读屏和 tooltip，视觉布局只占图标尺寸。 */
+.pometodo-todo .todo-workflow-action.compact-action .todo-control-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.pometodo-todo .todo-workflow-action.primary-action {
+  min-width: 62px;
+  height: 28px;
+  padding: 0 9px;
+}
+
+.pometodo-todo .todo-workflow-action.cancel-task {
+  background: var(--input-bg);
+  border-color: var(--separator);
+  color: var(--text-secondary);
+}
+
+.pometodo-todo .todo-workflow-action.cancel-task:hover:not(:disabled) {
+  background: var(--chip-hover-bg);
+  border-color: var(--text-tertiary);
+  color: var(--text-primary);
+}
+
+.pometodo-todo .todo-workflow-action:focus-visible,
+.pometodo-todo .todo-card-urgent-badge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .pometodo-todo .todo-workflow-action svg {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
 }
 
 .pometodo-todo .todo-workflow-action:hover:not(:disabled) {
@@ -192,10 +261,6 @@
 
 .pometodo-todo .todo-workflow-action:disabled {
   cursor: default;
-  opacity: 0.55;
-}
-
-.pometodo-todo .notification:hover .todo-workflow-action:disabled {
   opacity: 0.55;
 }
 
@@ -219,6 +284,38 @@
   background: rgba(52, 199, 89, 0.2);
   border-color: rgba(52, 199, 89, 0.32);
   color: #7ee08f;
+}
+
+[data-theme="dark"] .pometodo-todo .todo-workflow-action.cancel-task {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.todo-action-tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
+  border-radius: 6px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font: 500 11px/16px var(--font);
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+}
+
+.todo-action-tooltip.is-below { transform: translate(-50%, 0); }
+
+@media (max-width: 440px) {
+  .pometodo-todo .todo-card-footer { align-items: flex-start; }
+  .pometodo-todo .todo-card-meta { flex: 1 1 100%; width: 100%; }
+  .pometodo-todo .todo-card-actions { flex: 0 0 100%; width: 100%; flex-wrap: wrap; justify-content: flex-end; }
 }
 
 .pometodo-todo .todo-status-count { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -375,13 +472,13 @@
 }
 
 .pometodo-todo .todo-lite-button.danger {
-  background: transparent;
-  color: #ff3b30;
+  background: var(--red);
+  color: #fff;
 }
 
 .pometodo-todo .todo-lite-button.danger:hover:not(:disabled) {
-  background: rgba(255, 59, 48, 0.08);
-  color: #ff3b30;
+  background: color-mix(in srgb, var(--red) 88%, #000);
+  color: #fff;
 }
 
 /* === Task dialog === */
@@ -426,8 +523,12 @@
 
 .pometodo-todo .todo-dialog-date-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+@media (max-width: 360px) {
+  .pometodo-todo .todo-dialog-date-grid { grid-template-columns: 1fr; gap: 8px; }
 }
 
 .pometodo-todo .todo-dialog-date-field {
@@ -468,8 +569,8 @@
   top: calc(100% + 6px);
   left: 0;
   z-index: 30;
-  width: 100%;
-  max-width: 100%;
+  width: calc(200% + 14px);
+  max-width: 300px;
   padding: 8px;
   border: 0.5px solid var(--separator);
   border-radius: 10px;
@@ -477,6 +578,15 @@
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+}
+
+.pometodo-todo .todo-dialog-date-field:nth-child(2) .todo-dialog-calendar {
+  left: auto;
+  right: 0;
+}
+
+@media (max-width: 360px) {
+  .pometodo-todo .todo-dialog-date-field .todo-dialog-calendar { width: 100%; max-width: 100%; }
 }
 
 [data-theme="dark"] .pometodo-todo .todo-dialog-calendar {
@@ -818,13 +928,25 @@
 }
 
 .pometodo-todo .todo-dialog-delete-btn.card-delete-btn {
-  opacity: 0.5;
-  color: var(--text-secondary);
+  width: 42px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--red);
+  color: #fff;
+  opacity: 1;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--red) 32%, transparent);
+  transition: background .16s ease-out, transform .16s ease-out, box-shadow .16s ease-out;
 }
 
 .pometodo-todo .todo-dialog-delete-btn.card-delete-btn:hover {
-  opacity: 1 !important;
+  background: color-mix(in srgb, var(--red) 88%, #000);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--red) 28%, transparent);
 }
+
+.pometodo-todo .todo-dialog-delete-btn.card-delete-btn:hover svg { color: inherit; }
+.pometodo-todo .todo-dialog-delete-btn.card-delete-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .pometodo-todo .todo-dialog-bottom .dialog-btn {
   padding: 8px 18px;

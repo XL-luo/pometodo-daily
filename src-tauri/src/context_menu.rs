@@ -25,6 +25,15 @@ pub struct ContextMenuState {
     pending: Mutex<Option<MenuSnapshot>>,
 }
 
+// Includes the opening phase before the webview has presented the menu.
+pub fn floating_menu_open(app: &tauri::AppHandle) -> bool {
+    app.state::<ContextMenuState>()
+        .pending
+        .lock()
+        .ok()
+        .is_some_and(|pending| pending.as_ref().is_some_and(|menu| menu.floating))
+}
+
 fn popup_origin(
     anchor: (i32, i32),
     size: (u32, u32),

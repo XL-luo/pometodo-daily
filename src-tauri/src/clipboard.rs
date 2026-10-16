@@ -47,6 +47,7 @@ pub struct AiDraft {
     title: String,
     note: Option<String>,
     received_at: Option<String>,
+    planned_start_at: Option<String>,
     due_at: Option<String>,
     attachment_paths: Vec<String>,
 }
@@ -80,12 +81,19 @@ fn finish_recognition(
             if parsed.warnings.contains(&ExtractionWarning::InvalidDueDate) {
                 warnings.push("完成日期需核对");
             }
+            if parsed.warnings.contains(&ExtractionWarning::InvalidPlannedStartDate) {
+                warnings.push("计划开始日期需核对");
+            }
+            if parsed.warnings.contains(&ExtractionWarning::InvalidPlannedRange) {
+                warnings.push("计划开始日期晚于完成日期，请修正");
+            }
             RecognitionResult::Ai {
                 draft: AiDraft {
                     customer_name: parsed.customer_name,
                     title: title.to_string(),
                     note: parsed.note,
                     received_at: parsed.received_at,
+                    planned_start_at: parsed.planned_start_at,
                     due_at: parsed.due_at,
                     attachment_paths: local.attachment_paths,
                 },
@@ -112,11 +120,18 @@ fn extract_with_user_key(
 ) -> Result<Option<ParsedExtraction>, String> {
     if let Some(images) = vision {
         // 视觉直传：AI 直接看图（与官方同思路，准确率最高）；失败由调用方退回 OCR 文本。
-        let messages = crate::ai_extract::build_vision_messages(text, context).map_err(|error| error.to_string())?;
+        let messages = crate::ai_extract::build_vision_messages(text, context)
+            .map_err(|error| error.to_string())?;
         static HTTP_VISION: OnceLock<Result<AiHttp, crate::ai_http::AiHttpError>> = OnceLock::new();
-        let content = HTTP_VISION.get_or_init(AiHttp::new).as_ref().map_err(ToString::to_string)?
-            .complete_vision(provider, key, &messages, images).map_err(|error| error.to_string())?;
-        return crate::ai_extract::parse_response(&content, context).map(Some).map_err(|error| error.to_string());
+        let content = HTTP_VISION
+            .get_or_init(AiHttp::new)
+            .as_ref()
+            .map_err(ToString::to_string)?
+            .complete_vision(provider, key, &messages, images)
+            .map_err(|error| error.to_string())?;
+        return crate::ai_extract::parse_response(&content, context)
+            .map(Some)
+            .map_err(|error| error.to_string());
     }
     extract_text(text, context, |messages| {
         static HTTP: OnceLock<Result<AiHttp, crate::ai_http::AiHttpError>> = OnceLock::new();
@@ -303,7 +318,7 @@ pub async fn pometodo_save_clipboard_attachment(
 }
 
 /// 截图直传视觉识别：长边压缩到 2000 后重编码 PNG（小字识别更稳），压缩失败或过大返回 Err（上层跳过直传）。
-fn prepare_vision_image(path: &Path) -> Result<Vec<String>, String> {
+pub(crate) fn prepare_vision_image(path: &Path) -> Result<Vec<String>, String> {
     let bytes = std::fs::read(path).map_err(|_| "无法读取截图")?;
     let decoded = image::load_from_memory(&bytes).map_err(|_| "图片解码失败")?;
     let narrowed = if decoded.width() > 2000 || decoded.height() > 2000 {
@@ -450,6 +465,7 @@ mod tests {
             title: Some("核对初稿".into()),
             note: None,
             received_at: None,
+            planned_start_at: None,
             due_at: None,
             warnings: vec![ExtractionWarning::InvalidDueDate],
         };
@@ -466,7 +482,6 @@ mod tests {
         assert!(value["message"].as_str().unwrap().contains("完成日期"));
     }
 
-
     #[test]
     fn official_vision_sends_original_image_and_never_falls_back_to_text() {
         let now = chrono::DateTime::parse_from_rfc3339("2026-09-06T10:00:00+08:00").unwrap();
@@ -475,6 +490,7 @@ mod tests {
             customer_name: None,
             note: None,
             received_at: None,
+            planned_start_at: None,
             due_at: None,
             warnings: vec![],
         };
@@ -569,6 +585,7 @@ mod tests {
             title: None,
             note: Some("10 分钟后热饭，热好就关火".into()),
             received_at: None,
+            planned_start_at: None,
             due_at: None,
             warnings: vec![],
         };
@@ -612,20 +629,30 @@ mod tests {
             title: Some("核对初稿".into()),
             note: None,
             received_at: None,
+            planned_start_at: None,
             due_at: None,
             warnings: vec![],
         };
         let result = arrange_clipboard(
             || Ok(("qwen".into(), "byok-key".into())),
-            || Ok(ClipboardInput { text: String::new(), attachment: Some("img".into()) }),
+            || {
+                Ok(ClipboardInput {
+                    text: String::new(),
+                    attachment: Some("img".into()),
+                })
+            },
             |_| panic!("视觉直传成功时不得使用本地 OCR"),
-            |id| { assert_eq!(id, "img"); Ok(vec!["BASE64PNG".into()]) },
+            |id| {
+                assert_eq!(id, "img");
+                Ok(vec!["BASE64PNG".into()])
+            },
             |_, _, _, _, vision| {
                 assert_eq!(vision, Some(&["BASE64PNG".to_string()][..]));
                 Ok(Some(parsed.clone()))
             },
             now,
-        ).unwrap();
+        )
+        .unwrap();
         let value = serde_json::to_value(result).unwrap();
         assert_eq!(value["kind"], "ai");
         assert_eq!(value["draft"]["title"], "核对初稿");
@@ -637,7 +664,12 @@ mod tests {
         let mut calls = 0;
         let result = arrange_clipboard(
             || Ok(("glm".into(), "byok-key".into())),
-            || Ok(ClipboardInput { text: String::new(), attachment: Some("img".into()) }),
+            || {
+                Ok(ClipboardInput {
+                    text: String::new(),
+                    attachment: Some("img".into()),
+                })
+            },
             |_| {
                 let mut document = crate::local_extract::LocalDocument::default();
                 document.text = "虚构客户：请核对初稿".into();
@@ -647,12 +679,24 @@ mod tests {
             |_, _, _, _, vision| {
                 calls += 1;
                 assert!(vision.is_none(), "降级路径不带图");
-                Ok(Some(ParsedExtraction { customer_name: None, title: Some("核对初稿".into()), note: None, received_at: None, due_at: None, warnings: vec![] }))
+                Ok(Some(ParsedExtraction {
+                    customer_name: None,
+                    title: Some("核对初稿".into()),
+                    note: None,
+                    received_at: None,
+                    planned_start_at: None,
+                    due_at: None,
+                    warnings: vec![],
+                }))
             },
             now,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(calls, 1);
-        assert_eq!(serde_json::to_value(result).unwrap()["draft"]["title"], "核对初稿");
+        assert_eq!(
+            serde_json::to_value(result).unwrap()["draft"]["title"],
+            "核对初稿"
+        );
     }
 
     #[test]
@@ -757,6 +801,7 @@ mod tests {
                         title: draft.title,
                         note: draft.note.unwrap(),
                         received_at: "2026-09-06T10:00:00+08:00".into(),
+                        planned_start_at: None,
                         due_at: draft.due_at,
                         attachment_paths: draft.attachment_paths,
                     })

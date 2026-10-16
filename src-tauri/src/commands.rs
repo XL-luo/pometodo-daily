@@ -42,18 +42,18 @@ pub(crate) async fn with_storage<T: Send + 'static>(
     .map_err(|_| "本地数据操作未完成".to_string())?
 }
 
-fn validate_attachments(state: &LocalStorage, draft: &TodoDraft) -> Result<(), String> {
-    if draft.attachment_paths.is_empty() {
+pub(crate) fn validate_attachment_ids(state: &LocalStorage, ids: &[String]) -> Result<(), String> {
+    if ids.is_empty() {
         return Ok(());
     }
     let store = state.attachment_store()?;
-    for id in &draft.attachment_paths {
+    for id in ids {
         store.path_for(id)?;
     }
     Ok(())
 }
 
-async fn with_mutation<T: Send + 'static>(
+pub(crate) async fn with_mutation<T: Send + 'static>(
     app: tauri::AppHandle,
     operation: impl FnOnce(&mut LocalStorage) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
@@ -113,7 +113,7 @@ pub async fn pometodo_create_task(
     draft: TodoDraft,
 ) -> Result<TodoTask, String> {
     with_mutation(app, move |storage| {
-        validate_attachments(storage, &draft)?;
+        validate_attachment_ids(storage, &draft.attachment_paths)?;
         storage.repo.create(draft)
     })
     .await
@@ -126,7 +126,7 @@ pub async fn pometodo_update_task(
     draft: TodoDraft,
 ) -> Result<TodoTask, String> {
     with_mutation(app, move |storage| {
-        validate_attachments(storage, &draft)?;
+        validate_attachment_ids(storage, &draft.attachment_paths)?;
         storage.repo.update(&id, draft)
     })
     .await
@@ -139,6 +139,14 @@ pub async fn pometodo_set_status(
     status: TodoStatus,
 ) -> Result<TodoTask, String> {
     with_mutation(app, move |storage| storage.repo.set_status(&id, status)).await
+}
+
+#[tauri::command]
+pub async fn pometodo_cancel_task(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<TodoTask, String> {
+    with_mutation(app, move |storage| storage.repo.cancel_task(&id)).await
 }
 
 #[tauri::command]
@@ -255,15 +263,16 @@ mod tests {
             title: "纯文字保存".into(),
             note: String::new(),
             received_at: "2026-09-06T00:00:00Z".into(),
+            planned_start_at: None,
             due_at: None,
             attachment_paths: vec![],
         };
-        assert!(validate_attachments(storage, &draft).is_ok());
+        assert!(validate_attachment_ids(storage, &draft.attachment_paths).is_ok());
         let saved = storage.repo.create(draft.clone()).unwrap();
         assert_eq!(storage.repo.list().unwrap()[0].id, saved.id);
         draft
             .attachment_paths
             .push("not-an-existing-image.png".into());
-        assert!(validate_attachments(storage, &draft).is_err());
+        assert!(validate_attachment_ids(storage, &draft.attachment_paths).is_err());
     }
 }

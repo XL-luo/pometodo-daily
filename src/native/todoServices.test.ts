@@ -40,12 +40,13 @@ describe("真实宿主服务适配", () => {
     await service.listTasks();
     await service.updateTask("test-id", draft);
     await service.setTaskStatus("test-id", "completed");
+    await service.cancelTask("test-id");
     await service.setTaskUrgent("test-id", true);
     await service.deleteTask("test-id");
     await service.saveClipboardAttachment();
     await service.getAttachmentDataUrl("opaque.png");
     expect(calls).toEqual([
-      "pometodo_list_tasks", "pometodo_update_task", "pometodo_set_status", "pometodo_set_urgent",
+      "pometodo_list_tasks", "pometodo_update_task", "pometodo_set_status", "pometodo_cancel_task", "pometodo_set_urgent",
       "pometodo_delete_task", "pometodo_save_clipboard_attachment", "pometodo_attachment_data_url",
     ]);
   });

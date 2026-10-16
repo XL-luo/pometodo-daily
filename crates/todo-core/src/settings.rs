@@ -272,6 +272,7 @@ mod tests {
                 title: "任务".into(),
                 note: String::new(),
                 received_at: "2026-09-05T16:00:00Z".into(),
+                planned_start_at: None,
                 due_at: due.map(str::to_string),
                 attachment_paths: vec![],
             })
@@ -295,6 +296,7 @@ mod tests {
                 title: "任务".into(),
                 note: String::new(),
                 received_at: "2026-09-05T16:00:00Z".into(),
+                planned_start_at: None,
                 due_at: None,
                 attachment_paths: vec![],
             })
@@ -359,6 +361,7 @@ mod tests {
             title: "示例任务".into(),
             note: String::new(),
             received_at: "2026-09-06T00:00:00Z".into(),
+            planned_start_at: None,
             due_at: None,
             attachment_paths: vec![],
         };

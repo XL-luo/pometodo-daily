@@ -427,6 +427,38 @@ fn warnings_and_error_enums_are_comparable() {
 }
 
 #[test]
+fn text_and_screenshot_extract_three_distinct_dates() {
+    let content = r#"{"title":"虚构跨日任务","receivedAt":"2026-09-28","plannedStartAt":"2026-10-01","dueAt":"2026-10-05"}"#;
+    for ctx in [text_ctx(), ocr_ctx()] {
+        let parsed = parse_response(content, &ctx).unwrap();
+        assert_eq!(parsed.received_at.as_deref(), Some("2026-09-28T00:00:00+08:00"));
+        assert_eq!(parsed.planned_start_at.as_deref(), Some("2026-10-01T00:00:00+08:00"));
+        assert_eq!(parsed.due_at.as_deref(), Some("2026-10-05T00:00:00+08:00"));
+        assert!(parsed.warnings.is_empty());
+        let prompt = build_messages("9月28日接收，10月1日开始，10月5日交付", &ctx).unwrap();
+        assert!(prompt.system.contains("plannedStartAt"));
+        assert!(prompt.system.contains("不要把聊天时间"));
+        let missing = parse_response(r#"{"title":"虚构任务","receivedAt":"2026-09-28","dueAt":"2026-10-05"}"#, &ctx).unwrap();
+        assert!(missing.planned_start_at.is_none());
+        assert!(missing.warnings.is_empty());
+    }
+}
+
+#[test]
+fn invalid_or_reversed_start_warns_without_swapping_dates() {
+    let invalid = parse_response(r#"{"title":"虚构任务","plannedStartAt":"2026-02-30"}"#, &text_ctx()).unwrap();
+    assert!(invalid.planned_start_at.is_none());
+    assert!(invalid.warnings.contains(&ExtractionWarning::InvalidPlannedStartDate));
+    let reversed = parse_response(r#"{"title":"虚构任务","plannedStartAt":"2026-10-05","dueAt":"2026-10-01"}"#, &ocr_ctx()).unwrap();
+    assert_eq!(reversed.planned_start_at.as_deref(), Some("2026-10-05T00:00:00+08:00"));
+    assert_eq!(reversed.due_at.as_deref(), Some("2026-10-01T00:00:00+08:00"));
+    assert!(reversed.warnings.contains(&ExtractionWarning::InvalidPlannedRange));
+    let same_day = parse_response(r#"{"title":"虚构任务","plannedStartAt":"2026-10-01T23:00:00+08:00","dueAt":"2026-10-01T08:00:00+08:00"}"#, &text_ctx()).unwrap();
+    assert!(same_day.warnings.is_empty());
+    assert_eq!(parse_response(r#"{"title":"虚构任务","plannedStartAt":42}"#, &text_ctx()), Err(ExtractionError::InvalidShape));
+}
+
+#[test]
 fn accepts_crlf_unlabelled_and_case_insensitive_fences() {
     let crlf = "```json\r\n{\"title\":\"发初稿\"}\r\n```";
     let parsed = parse_response(crlf, &text_ctx()).expect("CRLF 围栏应成功");

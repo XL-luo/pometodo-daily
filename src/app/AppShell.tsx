@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createTodoServices, nativeError } from "../native/todoServices";
+import { createDailyServices } from "../native/dailyServices";
 import { createSettingsServices } from "../native/settingsServices";
 import { SettingsPage } from "../features/settings";
 import { TodoPage } from "../features/todo";
+import DailyPage from "../features/daily/DailyPage";
 import type { CustomerSetting, QuickDueSetting, SettingsServices, SettingsSnapshot, SettingsTheme } from "../contracts/settings";
 import "./shell.css";
 import logoUrl from "../assets/pometodo-logo.png";
@@ -22,6 +24,7 @@ interface AppInfo {
 }
 interface OpenRequest { taskId?: string; settings: boolean; pending?: boolean; requestId: number }
 const todoServices = createTodoServices(invoke);
+const dailyServices = createDailyServices(invoke);
 const settingsServices = createSettingsServices(invoke);
 async function openAttachment(path: string) {
   try { await invoke("pometodo_open_attachment", { path }); }
@@ -119,6 +122,8 @@ export function AppShell() {
   const [settingsFocusRequest, setSettingsFocusRequest] = useState<{ seq: number; target: string } | null>(null);
   const focusSeqRef = useRef(0);
   const [todoBusy, setTodoBusy] = useState(false);
+  const [dailyBusy, setDailyBusy] = useState(false);
+  const [workspace, setWorkspace] = useState<"todo" | "daily">("todo");
   const [todoEditorOpen, setTodoEditorOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const guardedSettingsServices = useMemo(() => trackSettingsActivity(settingsServices, setSettingsBusy), []);
@@ -157,25 +162,15 @@ export function AppShell() {
       setSettingsOpen(true);
     },
   });
-  // 更新：启动安静检查一次，窗口恢复焦点时检查但至少间隔 6 小时。
+  // 自用日报版使用独立应用标识，不连接上游更新渠道。
   const updateController = useMemo(() => createUpdateController(updateServices), []);
   const updateState = useSyncExternalStore(updateController.subscribe, updateController.getSnapshot, updateController.getSnapshot);
   useEffect(() => updateController.mount(), [updateController]);
-  useEffect(() => { updateController.checkAuto(); }, [updateController]);
-  useEffect(() => {
-    const onFocus = () => updateController.checkAuto();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [updateController]);
-  const updateAvailable = Boolean(updateState.check?.available && updateState.check.release);
+  const updateAvailable = false;
   const [updateOpen, setUpdateOpen] = useState(false);
   const handleCheckUpdate = useCallback(() => {
-    void updateController.checkManual().then(result => {
-      if (!result.ok) setActionMessage({ tone: "warn", text: result.error });
-      else if (result.check.available && result.check.release) setActionMessage({ tone: "info", text: `发现新版本 v${result.check.release.version}` });
-      else setActionMessage({ tone: "info", text: "已是最新版本" });
-    });
-  }, [updateController]);
+    setActionMessage({ tone: "info", text: "日报版已关闭上游自动更新，请从源码构建新版本。" });
+  }, []);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [focusTaskRequest, setFocusTaskRequest] = useState<{ taskId: string; requestId: number }>();
   const [pendingRequest, setPendingRequest] = useState(0);
@@ -183,7 +178,7 @@ export function AppShell() {
   const [pinned, setPinned] = useState(false);
   const [savingPin, setSavingPin] = useState(false);
   const canInstall = canInstallUpdate({
-    todoBusy, todoEditorOpen, todoLoginOpen: service.editorBusy, accountBusy: service.busy, settingsBusy,
+    todoBusy: todoBusy || dailyBusy, todoEditorOpen, todoLoginOpen: service.editorBusy, accountBusy: service.busy, settingsBusy,
     smartArrangeBusy, themeSaving: savingTheme, pinSaving: savingPin, installing: updateState.installing,
   });
   const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -221,8 +216,8 @@ export function AppShell() {
         if (!active) return;
         if (payload.settings) setSettingsOpen(true);
         else if (!leaveSettingsPage()) return;
-        if (payload.taskId) setFocusTaskRequest({ taskId: payload.taskId, requestId: payload.requestId });
-        else if (payload.pending) setPendingRequest(payload.requestId);
+        if (payload.taskId) { setWorkspace("todo"); setFocusTaskRequest({ taskId: payload.taskId, requestId: payload.requestId }); }
+        else if (payload.pending) { setWorkspace("todo"); setPendingRequest(payload.requestId); }
       }),
       listen("pometodo-data-changed", () => {
         const infoVersion = infoVersionRef.current;
@@ -274,12 +269,16 @@ export function AppShell() {
       <div className="pome-brand" data-tauri-drag-region>
         <img className="pome-mark" src={logoUrl} alt="" data-tauri-drag-region />
         <span data-tauri-drag-region>PomeTodo</span>
+        <nav className="pome-workspace-tabs" aria-label="工作区">
+          <button aria-pressed={workspace === "todo"} onClick={() => setWorkspace("todo")}>待办</button>
+          <button aria-pressed={workspace === "daily"} onClick={() => setWorkspace("daily")}>日报</button>
+        </nav>
       </div>
       <div className="pome-title-tools">
         {updateAvailable && <button className="pome-icon-button" aria-label="发现新版本" title="发现新版本" aria-pressed={updateOpen} onClick={() => setUpdateOpen(value => !value)}><Icon kind="update" /></button>}
         <button className="pome-icon-button" aria-label={pinned ? "取消置顶" : "置顶窗口"} title={pinned ? "取消置顶" : "置顶窗口"} aria-pressed={pinned} disabled={savingPin} onClick={() => void togglePin()}><Icon kind="pin" /></button>
         <button className="pome-icon-button" aria-label="切换明暗主题" title="切换明暗主题" disabled={!info || savingTheme || updateOpen} onClick={() => void setTheme(theme === "dark" ? "light" : "dark")}><Icon kind="theme" /></button>
-        <button ref={settingsButton} className="pome-icon-button" aria-label="设置" title="设置" disabled={!info || settingsOpen || todoBusy} onClick={() => { setSettingsFocusRequest(null); setSettingsOpen(true); }}><Icon kind="settings" /></button>
+        <button ref={settingsButton} className="pome-icon-button" aria-label="设置" title="设置" disabled={!info || settingsOpen || todoBusy || dailyBusy} onClick={() => { setSettingsFocusRequest(null); setSettingsOpen(true); }}><Icon kind="settings" /></button>
         <span className="pome-title-divider" />
         <button className="pome-icon-button" aria-label="最小化" title="最小化" onClick={() => void windowAction("minimize")}><Icon kind="minimize" /></button>
         <button className="pome-icon-button pome-close-button" aria-label={closeLabel} title={closeLabel} onClick={() => void windowAction("close")}><Icon kind="close" /></button>
@@ -289,10 +288,15 @@ export function AppShell() {
       {startupError ? <section className="pome-startup-state" role="alert"><h1>未能打开本地数据</h1><p>{startupError}</p><p>请检查后重新启动 PomeTodo，原数据文件会保留。</p></section>
         : info && info.serviceMode !== service.mode ? <section className="pome-startup-state" role="alert"><h1>程序组件不一致</h1><p>请重新安装完整版本，原数据文件会保留。</p></section>
         : info ? <>
-          <div className="pome-page" hidden={settingsOpen || updateOpen} inert={settingsOpen || updateOpen || undefined}>
+          <div className="pome-page" hidden={settingsOpen || updateOpen || workspace !== "todo"} inert={settingsOpen || updateOpen || workspace !== "todo" || undefined}>
             <TodoPage services={todoServices} smartArrangeAvailable={smartArrange?.available ?? false} smartArrangeLabel={service.entry.label} smartArrangeTone={service.entry.tone} onEnableSmartArrange={service.openEntry} onBusyChange={setTodoBusy} onEditorOpenChange={setTodoEditorOpen}
               loginPanel={service.editorContent}
-              systemMessage={actionError} onDismissSystemMessage={() => setActionError(null)} onOpenAttachment={openAttachment} onImportAttachment={importAttachment} pendingRequest={pendingRequest} active={!settingsOpen && !updateOpen} refreshRequest={refreshRequest} quickDueOptions={JSON.stringify(info.quickDueOptions)} customerSuggestions={info.customers.map((customer) => customer.displayName)} customerLabel={info.customerLabel} focusTaskRequest={focusTaskRequest} />
+              systemMessage={actionError} onDismissSystemMessage={() => setActionError(null)} onOpenAttachment={openAttachment} onImportAttachment={importAttachment} pendingRequest={pendingRequest} active={!settingsOpen && !updateOpen && workspace === "todo"} refreshRequest={refreshRequest} quickDueOptions={JSON.stringify(info.quickDueOptions)} customerSuggestions={info.customers.map((customer) => customer.displayName)} customerLabel={info.customerLabel} focusTaskRequest={focusTaskRequest} />
+          </div>
+          <div className="pome-page" hidden={settingsOpen || updateOpen || workspace !== "daily"} inert={settingsOpen || updateOpen || workspace !== "daily" || undefined}>
+            <DailyPage services={dailyServices} active={!settingsOpen && !updateOpen && workspace === "daily"}
+              smartArrangeAvailable={smartArrange?.available ?? false} onOpenSmartArrange={service.openEntry}
+              onBusyChange={setDailyBusy} onOpenAttachment={openAttachment} onImportAttachment={importAttachment} />
           </div>
           {settingsOpen && <div className="pome-page" hidden={updateOpen} inert={updateOpen || undefined}>
             <SettingsPage active={!updateOpen} services={guardedSettingsServices} accountCard={service.settingsContent} hint={service.settingsHint} onCheckUpdate={handleCheckUpdate} updateChecking={updateState.checking} activeTheme={info.theme} smartArrange={{ officialServicesEnabled: service.mode === "official", snapshot: smartArrange, busy: smartArrangeBusy || service.arrangeBusy, onChange: preferences => void updateSmartArrange(preferences) }} systemMessage={actionError} onDismissSystemMessage={() => setActionError(null)} floatingBallEnabled={info.floatingBallEnabled} onChanged={onSettingsChanged} onBack={() => void leaveSettingsPage()} settingsFocusRequest={settingsFocusRequest} />

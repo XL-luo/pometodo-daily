@@ -53,7 +53,7 @@ corepack pnpm run build:installer
 
 构建脚本检查版本并生成安装包与校验记录，默认保存到 `artifacts/byok/`，编译缓存使用独立目录。脚本从本机缓存及 `docs/licenses/` 汇集原始版权许可，并把 MPL 组件源码归档随安装包提供；需要当前 Rust 工具链的 `rust-docs` 组件。本机依赖齐全后可加 `--offline`。构建不会发布或部署。
 
-**安装包沿用 PomeTodo 的应用标识，会替换现有安装。** 请先导出备份，不要在正在使用的正式数据上测试。两种官方分发的安装包保留相同的数据位置，但更新渠道不同：GitHub 安装包不会自动更新成带账户的官网安装包。自行分发改版前，请修改应用标识和更新地址，清楚标明发布者。
+本日报改版使用独立应用标识 `com.xl.pometodo.daily` 和独立数据目录，不会覆盖原版 PomeTodo。迁移数据时先从原版导出备份，再在日报版导入；旧版任务备份可直接读取。日报版关闭上游自动更新，请从本仓库构建新版本。
 
 OCR 夹具由 `scripts/create-ocr-fixture.ps1` 与 `scripts/create-chat-ocr-fixture.ps1` 使用虚构文字生成。
 

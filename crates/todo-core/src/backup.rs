@@ -1,7 +1,7 @@
 use crate::{
     attachments::AttachmentStore,
     local::LocalStorage,
-    store::{validate_backup_records, BackupRecord},
+    store::{validate_backup_records, BackupRecord, DailyBackup},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -21,10 +21,13 @@ struct Manifest {
     format: String,
     version: u32,
     tasks: Vec<BackupRecord>,
+    #[serde(default)]
+    daily: DailyBackup,
 }
 
 pub struct PreparedBackup {
     records: Vec<BackupRecord>,
+    daily: DailyBackup,
     ids: BTreeSet<String>,
     directory: tempfile::TempDir,
 }
@@ -50,17 +53,16 @@ pub fn export_backup(storage: &LocalStorage, destination: &Path) -> Result<(), S
         .filter(|p| p.is_dir())
         .ok_or("备份目录不可用")?;
     let records = storage.repo.backup_records()?;
-    let ids: BTreeSet<_> = records
-        .iter()
-        .flat_map(|r| r.task.attachment_paths.iter().cloned())
-        .collect();
+    let daily = storage.repo.daily_backup()?;
+    let ids = storage.repo.attachment_ids()?;
     if ids.len() + 1 > MAX_ENTRIES {
         return Err("备份截图数量超过本版限制".into());
     }
     let manifest = serde_json::to_vec(&Manifest {
         format: "pometodo-backup".into(),
-        version: 1,
+        version: 4,
         tasks: records,
+        daily,
     })
     .map_err(|e| e.to_string())?;
     if manifest.len() as u64 > MAX_ENTRY {
@@ -153,7 +155,7 @@ pub fn prepare_backup(path: &Path) -> Result<PreparedBackup, String> {
         }
         if name == "tasks.json" {
             let data: Manifest = serde_json::from_slice(&bytes).map_err(|_| "备份任务格式无效")?;
-            if data.format != "pometodo-backup" || data.version != 1 {
+            if data.format != "pometodo-backup" || !matches!(data.version, 1 | 2 | 3 | 4) {
                 return Err("备份版本不兼容，请使用对应版本的 PomeTodo".into());
             }
             manifest = Some(data);
@@ -162,7 +164,9 @@ pub fn prepare_backup(path: &Path) -> Result<PreparedBackup, String> {
             ids.insert(id.to_string());
         }
     }
-    let records = manifest.ok_or("备份缺少任务清单")?.tasks;
+    let manifest = manifest.ok_or("备份缺少任务清单")?;
+    let records = manifest.tasks;
+    let daily = manifest.daily;
     validate_backup_records(&records)?;
     let store = AttachmentStore::open(&images)?;
     for id in &ids {
@@ -175,8 +179,16 @@ pub fn prepare_backup(path: &Path) -> Result<PreparedBackup, String> {
             }
         }
     }
+    for source in &daily.sources {
+        for id in &source.attachment_paths {
+            if !ids.contains(id) {
+                return Err("备份缺少日报引用的截图，当前记录未改变".into());
+            }
+        }
+    }
     Ok(PreparedBackup {
         records,
+        daily,
         ids,
         directory,
     })
@@ -202,6 +214,9 @@ pub fn import_backup(
     storage
         .repo
         .replace_backup_records(&prepared.records, &image_map)?;
+    storage
+        .repo
+        .replace_daily_backup(&prepared.daily, &image_map)?;
     Ok(safety)
 }
 
@@ -210,7 +225,7 @@ mod tests {
     use super::*;
     use crate::{
         local::LocalStorage,
-        models::{TodoDraft, TodoStatus},
+        models::{DailySourceDraft, TodoDraft, TodoStatus},
     };
     use std::io::Write;
 
@@ -220,6 +235,7 @@ mod tests {
             title: "备份验证".into(),
             note: "无真实数据".into(),
             received_at: "2026-09-06T00:00:00Z".into(),
+            planned_start_at: None,
             due_at: None,
             attachment_paths: vec![],
         }
@@ -233,10 +249,24 @@ mod tests {
         let attachment = storage.attachment_store().unwrap().save_png(png).unwrap();
         let mut input = draft();
         input.attachment_paths.push(attachment.clone());
+        input.planned_start_at = Some("2026-10-01T00:00:00+08:00".into());
+        input.due_at = Some("2026-10-05T00:00:00+08:00".into());
         let task = storage.repo.create(input).unwrap();
         let task = storage
             .repo
             .set_status(&task.id, TodoStatus::InProgress)
+            .unwrap();
+        storage
+            .repo
+            .create_daily_source(DailySourceDraft {
+                work_date: "2026-09-28".into(),
+                text: "虚构日报素材".into(),
+                attachment_paths: vec![attachment.clone()],
+            })
+            .unwrap();
+        storage
+            .repo
+            .save_report("2026-09-28", "推进与问题\n- 推进虚构验证")
             .unwrap();
         let archive = tmp.path().join("backup.zip");
         export_backup(&storage, &archive).unwrap();
@@ -251,8 +281,21 @@ mod tests {
         assert_eq!(current.len(), 1);
         assert_eq!(current[0].id, task.id);
         assert_eq!(current[0].status, TodoStatus::InProgress);
+        assert_eq!(current[0].planned_start_at, task.planned_start_at);
+        assert_eq!(current[0].due_at, task.due_at);
         assert_eq!(current[0].updated_at, task.updated_at);
         assert_eq!(storage.repo.theme().unwrap(), "dark");
+        assert_eq!(
+            storage.repo.list_daily_sources("2026-09-28").unwrap().len(),
+            1
+        );
+        assert!(storage
+            .repo
+            .report("2026-09-28")
+            .unwrap()
+            .unwrap()
+            .content
+            .contains("虚构验证"));
         assert_ne!(current[0].attachment_paths[0], attachment);
         assert_eq!(
             storage
@@ -277,6 +320,30 @@ mod tests {
                 .id,
             new_task.id
         );
+    }
+
+    #[test]
+    fn legacy_backup_versions_restore_without_backfilling_planned_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut storage = LocalStorage::open(&tmp.path().join("profile")).unwrap();
+        let saved = storage.repo.create(draft()).unwrap();
+        let mut records = serde_json::to_value(storage.repo.backup_records().unwrap()).unwrap();
+        for record in records.as_array_mut().unwrap() {
+            record["task"].as_object_mut().unwrap().remove("plannedStartAt");
+            record["task"].as_object_mut().unwrap().remove("cancelledAt");
+        }
+        for version in 1..=3 {
+            let archive = tmp.path().join(format!("legacy-{version}.zip"));
+            let mut zip = zip::ZipWriter::new(File::create(&archive).unwrap());
+            zip.start_file("tasks.json", zip::write::SimpleFileOptions::default()).unwrap();
+            let manifest = serde_json::json!({"format": "pometodo-backup", "version": version, "tasks": records});
+            zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+            zip.finish().unwrap();
+            import_backup(&mut storage, prepare_backup(&archive).unwrap()).unwrap();
+            let restored = storage.repo.list().unwrap();
+            assert_eq!(restored[0].id, saved.id);
+            assert!(restored[0].planned_start_at.is_none());
+        }
     }
 
     #[test]

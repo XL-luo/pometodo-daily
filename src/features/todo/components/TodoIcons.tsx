@@ -42,6 +42,12 @@ export const todoIcons = {
       <polyline points="20 6 9 17 4 12" />
     </svg>
   ),
+  cancel: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m7.8 7.8 8.4 8.4" />
+    </svg>
+  ),
   close: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M18 6 6 18" />
@@ -74,6 +80,12 @@ export const todoIcons = {
   urgentUp: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 15 6-6 6 6" />
+    </svg>
+  ),
+  flag: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 21V4" />
+      <path d="M6 5c4-3 8 3 12 0v9c-4 3-8-3-12 0" />
     </svg>
   ),
   undo: (

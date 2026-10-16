@@ -18,6 +18,7 @@ export function createTodoServices(invoke: InvokeCommand): TodoServices {
     createTask: (draft) => call("pometodo_create_task", { draft }),
     updateTask: (id, draft) => call("pometodo_update_task", { id, draft }),
     setTaskStatus: (id, status) => call("pometodo_set_status", { id, status }),
+    cancelTask: (id) => call("pometodo_cancel_task", { id }),
     setTaskUrgent: (id, urgent) => call("pometodo_set_urgent", { id, urgent }),
     deleteTask: (id) => call("pometodo_delete_task", { id }),
     recognizeClipboard: () => call("pometodo_recognize_clipboard"),
